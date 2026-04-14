@@ -1,0 +1,15 @@
+unsloth[colab-new]
+trl>=0.15.0
+transformers>=4.48.0
+datasets
+peft
+accelerate
+bitsandbytes
+torch>=2.4.0
+vllm>=0.6.0
+jsonschema
+pyyaml
+wandb
+matplotlib
+pandas
+numpy

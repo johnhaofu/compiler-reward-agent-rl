@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+dist/
+build/
+.DS_Store
+*.log
+wandb/
+outputs/
+checkpoints/
+*.ckpt
+*.pt
+*.bin
+.ipynb_checkpoints/
+data/horizon/
