@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from environments.sitemuse_validator import SitemuseValidator
+from experiments.notify import experiment_start, experiment_progress, experiment_done, experiment_error
 
 
 def run_zero_shot(
@@ -49,6 +50,7 @@ def run_zero_shot(
     validator = SitemuseValidator()
 
     # 4. Generate and validate
+    experiment_start("B0 Zero-Shot", model_path.split("/")[-1], len(prompts))
     results = []
     pass_count = 0
     json_pass = 0
@@ -149,6 +151,8 @@ def run_zero_shot(
     with open(output_path, "w") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
     print(f"\nResults saved to {output_path}")
+
+    experiment_done("B0 Zero-Shot", summary)
 
 
 if __name__ == "__main__":
