@@ -445,50 +445,143 @@ class AgentWorkspace:
         return json.dumps({"status": status, "summary": summary})
 
     def get_metrics(self) -> dict:
-        """Extract episode metrics from tool history."""
+        """
+        Extract episode metrics aligned with SWE-bench / FeatureBench standards.
+
+        ═══ Core (aligned with SWE-bench) ═══
+          resolved         — Task fully resolved (done=success + last validate passed)
+          first_try_valid  — First validate passed (code quality without fix)
+          fix_rate         — First validate failed → eventually resolved (compiler feedback value)
+                             ★ This is our paper's key metric
+
+        ═══ Efficiency (aligned with FeatureBench) ═══
+          total_turns      — Total tool calls
+          validate_attempts — Number of validate calls
+          turns_to_resolve — Tool calls until first passing validate (None if never passed)
+          fix_turns        — Tool calls spent on fixing (between first fail and first pass)
+          research_turns   — Research tool calls before first write
+          token_input      — Total input tokens (set externally by eval script)
+          token_output     — Total output tokens (set externally)
+
+        ═══ Analysis ═══
+          tool_sequence    — Ordered tool call names
+          error_trace      — Per-validate errors (for error type analysis)
+          final_files      — Generated file contents (for inspection)
+        """
         validate_calls = [t for t in self.tool_history if t.tool_name == "validate"]
+        write_calls = [t for t in self.tool_history if t.tool_name == "write_file"]
         research_tools = {"list_files", "read_file", "grep", "list_components", "get_section_schema"}
 
-        # Find first write
-        first_write_turn = None
-        for t in self.tool_history:
-            if t.tool_name == "write_file":
-                first_write_turn = t.turn
+        # ── Phase analysis ──
+        first_write_turn = write_calls[0].turn if write_calls else None
+
+        research_turns = sum(
+            1 for t in self.tool_history
+            if t.tool_name in research_tools
+            and (first_write_turn is None or t.turn < first_write_turn)
+        )
+
+        # ── Validate analysis ──
+        validate_results = []
+        for vc in validate_calls:
+            parsed = json.loads(vc.result)
+            passed = parsed.get("passed", False)
+            errors = [e.get("message", "") for e in parsed.get("errors", [])]
+            validate_results.append({"turn": vc.turn, "passed": passed, "errors": errors})
+
+        first_try_valid = validate_results[0]["passed"] if validate_results else False
+        last_validate_passed = validate_results[-1]["passed"] if validate_results else False
+
+        # Resolved = done(success) AND last validate passed
+        resolved = (self._done_status == "success" and last_validate_passed)
+
+        # Fix rate = first fail → eventually resolved
+        fix_rate = (not first_try_valid and resolved) if validate_results else False
+
+        # Turns to resolve
+        turns_to_resolve = None
+        for vr in validate_results:
+            if vr["passed"]:
+                turns_to_resolve = vr["turn"] + 1
                 break
 
-        research_turns = sum(1 for t in self.tool_history
-                            if t.tool_name in research_tools
-                            and (first_write_turn is None or t.turn < first_write_turn))
+        # Fix turns: between first failed validate and first passing validate
+        fix_turns = 0
+        if fix_rate and turns_to_resolve is not None:
+            first_fail_turn = validate_results[0]["turn"]
+            fix_turns = sum(
+                1 for t in self.tool_history
+                if first_fail_turn < t.turn < turns_to_resolve
+            )
 
-        # First validate result
-        first_validate_passed = False
-        if validate_calls:
-            first_result = json.loads(validate_calls[0].result)
-            first_validate_passed = first_result.get("passed", False)
+        # ── Error trace ──
+        error_trace = []
+        all_error_messages = []
+        error_types = {}
+        for i, vr in enumerate(validate_results):
+            if vr["errors"]:
+                error_trace.append({
+                    "attempt": i + 1,
+                    "turn": vr["turn"],
+                    "passed": vr["passed"],
+                    "errors": vr["errors"],
+                })
+            for err in vr["errors"]:
+                all_error_messages.append(err)
+                # Classify error type
+                if "Invalid JSON" in err:
+                    etype = "json_syntax"
+                elif "missing required key" in err:
+                    etype = "missing_key"
+                elif "unknown key" in err:
+                    etype = "unknown_key"
+                elif "does not refer to an existing section" in err:
+                    etype = "invalid_section_type"
+                elif "block type must be defined" in err or "Invalid value for type in block" in err:
+                    etype = "invalid_block_type"
+                elif "must exist in sections" in err:
+                    etype = "order_mismatch"
+                elif "Liquid syntax error" in err:
+                    etype = "liquid_syntax"
+                elif "Invalid JSON in tag" in err:
+                    etype = "schema_json"
+                else:
+                    etype = "other"
+                error_types[etype] = error_types.get(etype, 0) + 1
 
-        # Final validate result
-        final_validate_passed = False
-        if validate_calls:
-            final_result = json.loads(validate_calls[-1].result)
-            final_validate_passed = final_result.get("passed", False)
+        # ── Tool usage breakdown ──
+        tool_counts = {}
+        for t in self.tool_history:
+            tool_counts[t.tool_name] = tool_counts.get(t.tool_name, 0) + 1
 
-        # Error messages from all validates
-        all_errors = []
-        for vc in validate_calls:
-            result = json.loads(vc.result)
-            for err in result.get("errors", []):
-                all_errors.append(err.get("message", ""))
+        # ── Final files ──
+        final_files = dict(self.workspace_files)
 
         return {
+            # Core (SWE-bench aligned)
+            "resolved": resolved,
+            "first_try_valid": first_try_valid,
+            "fix_rate": fix_rate,
+
+            # Efficiency (FeatureBench aligned)
             "total_turns": len(self.tool_history),
-            "validate_calls": len(validate_calls),
+            "validate_attempts": len(validate_calls),
+            "write_calls": len(write_calls),
+            "turns_to_resolve": turns_to_resolve,
+            "fix_turns": fix_turns,
             "research_turns": research_turns,
-            "pass_at_1": first_validate_passed,
-            "pass_at_final": final_validate_passed,
             "done_status": self._done_status,
+
+            # Analysis
             "tool_sequence": [t.tool_name for t in self.tool_history],
-            "errors_encountered": all_errors,
-            "unique_errors": list(set(all_errors)),
+            "tool_counts": tool_counts,
+            "error_trace": error_trace,
+            "error_types": error_types,
+            "errors_encountered": all_error_messages,
+            "unique_errors": list(set(all_error_messages)),
+
+            # Output
+            "final_files": final_files,
         }
 
     def cleanup(self):

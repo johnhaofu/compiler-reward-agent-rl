@@ -1,0 +1,53 @@
+{
+  "model": "claude-sonnet-4-20250514",
+  "experiment": "claude_baseline",
+  "total": 1,
+  "pass_at_1": 0.0,
+  "pass_at_final": 1.0,
+  "avg_turns": 9.0,
+  "total_cost_usd": 0.151668,
+  "by_level": {
+    "1": {
+      "total": 1,
+      "pass_at_1": 0.0,
+      "pass_at_final": 1.0
+    }
+  },
+  "episodes": [
+    {
+      "total_turns": 9,
+      "validate_calls": 2,
+      "research_turns": 4,
+      "pass_at_1": false,
+      "pass_at_final": true,
+      "done_status": "success",
+      "tool_sequence": [
+        "list_components",
+        "get_section_schema",
+        "list_files",
+        "read_file",
+        "write_file",
+        "validate",
+        "write_file",
+        "validate",
+        "done"
+      ],
+      "errors_encountered": [
+        "Invalid value for type in block 'heading'. The given theme block type must be defined in the theme blocks folder."
+      ],
+      "unique_errors": [
+        "Invalid value for type in block 'heading'. The given theme block type must be defined in the theme blocks folder."
+      ],
+      "input_tokens": 42666,
+      "output_tokens": 1578,
+      "total_tokens": 44244,
+      "cost_usd": 0.151668,
+      "wall_time": 47.72,
+      "task_id": "L1-01",
+      "level": 1,
+      "level_name": "assemble_page",
+      "template_type": "page",
+      "industry": "books"
+    }
+  ]
+}

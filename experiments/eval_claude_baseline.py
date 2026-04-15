@@ -186,76 +186,127 @@ def run_evaluation(
             episodes.append(metrics)
             total_cost += metrics.get("cost_usd", 0)
 
-            status = "✅" if metrics["pass_at_final"] else "❌"
+            status = "✅" if metrics["resolved"] else "❌"
+            ftv = "1st✓" if metrics["first_try_valid"] else "fix" if metrics["fix_rate"] else "fail"
             print(f"  {status} turns={metrics['total_turns']} "
-                  f"validates={metrics['validate_calls']} "
-                  f"pass@1={'Y' if metrics['pass_at_1'] else 'N'} "
+                  f"validates={metrics['validate_attempts']} "
+                  f"[{ftv}] "
                   f"${metrics['cost_usd']:.3f}")
 
             workspace.cleanup()
 
         # ═══ Summary ═══
         total = len(episodes)
-        pass_1 = sum(1 for e in episodes if e["pass_at_1"])
-        pass_f = sum(1 for e in episodes if e["pass_at_final"])
+        resolved = sum(1 for e in episodes if e["resolved"])
+        first_try = sum(1 for e in episodes if e["first_try_valid"])
+        fixed = sum(1 for e in episodes if e["fix_rate"])
+        failed = total - resolved
+        resolved_eps = [e for e in episodes if e["resolved"]]
 
         print(f"\n{'='*70}")
-        print(f"Claude Baseline Results — {model}")
+        print(f"  Results — {model}")
         print(f"{'='*70}")
-        print(f"{'Metric':<25} {'Value':>10}")
-        print(f"{'-'*40}")
-        print(f"{'Total tasks':<25} {total:>10}")
-        print(f"{'Pass@1':<25} {f'{pass_1}/{total} ({pass_1*100//total}%)':>10}")
-        print(f"{'Pass@final':<25} {f'{pass_f}/{total} ({pass_f*100//total}%)':>10}")
-        print(f"{'Avg turns':<25} {sum(e['total_turns'] for e in episodes)/total:>10.1f}")
-        print(f"{'Avg validates':<25} {sum(e['validate_calls'] for e in episodes)/total:>10.1f}")
-        print(f"{'Total cost':<25} {f'${total_cost:.3f}':>10}")
+
+        # Core metrics table
+        print(f"\n┌{'─'*50}┐")
+        print(f"│ {'Metric':<30} {'Value':>18} │")
+        print(f"├{'─'*50}┤")
+        print(f"│ {'Total tasks':<30} {total:>18} │")
+        print(f"│ {'Resolved Rate':<30} {f'{resolved}/{total} ({resolved*100//total}%)':>18} │")
+        print(f"│ {'  ├ First-try Valid':<30} {f'{first_try}/{total} ({first_try*100//total}%)':>18} │")
+        print(f"│ {'  └ Fixed after Error':<30} {f'{fixed}/{total} ({fixed*100//total}%)':>18} │")
+        print(f"│ {'Failed':<30} {f'{failed}/{total} ({failed*100//total}%)':>18} │")
+        print(f"├{'─'*50}┤")
+        avg_turns = sum(e["total_turns"] for e in episodes) / total
+        avg_validates = sum(e["validate_attempts"] for e in episodes) / total
+        avg_resolve_turns = sum(e["turns_to_resolve"] for e in resolved_eps) / max(len(resolved_eps), 1) if resolved_eps else 0
+        avg_fix_turns = sum(e["fix_turns"] for e in episodes if e["fix_rate"]) / max(fixed, 1) if fixed else 0
+        print(f"│ {'Avg turns / task':<30} {avg_turns:>18.1f} │")
+        print(f"│ {'Avg validates / task':<30} {avg_validates:>18.1f} │")
+        print(f"│ {'Avg turns to resolve':<30} {avg_resolve_turns:>18.1f} │")
+        print(f"│ {'Avg fix turns (fix cases)':<30} {avg_fix_turns:>18.1f} │")
+        print(f"├{'─'*50}┤")
+        print(f"│ {'Total cost':<30} {f'${total_cost:.3f}':>18} │")
+        cost_per_task = total_cost / total
+        cost_per_resolve = total_cost / max(resolved, 1)
+        print(f"│ {'Cost / task':<30} {f'${cost_per_task:.3f}':>18} │")
+        print(f"│ {'Cost / resolved task':<30} {f'${cost_per_resolve:.3f}':>18} │")
+        print(f"└{'─'*50}┘")
 
         # By level
-        print(f"\n{'Level':<30} {'Pass@1':>10} {'Pass@final':>12} {'Avg turns':>10}")
-        print(f"{'-'*65}")
+        print(f"\n┌{'─'*72}┐")
+        print(f"│ {'Level':<28} {'Resolved':>10} {'1st-try':>10} {'Fixed':>10} {'Turns':>10} │")
+        print(f"├{'─'*72}┤")
         for lv in sorted(set(e["level"] for e in episodes)):
             lv_eps = [e for e in episodes if e["level"] == lv]
             lv_name = lv_eps[0].get("level_name", "")
-            lv_p1 = sum(1 for e in lv_eps if e["pass_at_1"])
-            lv_pf = sum(1 for e in lv_eps if e["pass_at_final"])
+            lv_resolved = sum(1 for e in lv_eps if e["resolved"])
+            lv_first = sum(1 for e in lv_eps if e["first_try_valid"])
+            lv_fixed = sum(1 for e in lv_eps if e["fix_rate"])
             lv_turns = sum(e["total_turns"] for e in lv_eps) / len(lv_eps)
-            print(f"L{lv} {lv_name:<27} {f'{lv_p1}/{len(lv_eps)}':>10} {f'{lv_pf}/{len(lv_eps)}':>12} {lv_turns:>10.1f}")
+            n = len(lv_eps)
+            print(f"│ L{lv} {lv_name:<25} {f'{lv_resolved}/{n}':>10} {f'{lv_first}/{n}':>10} {f'{lv_fixed}/{n}':>10} {lv_turns:>10.1f} │")
+        print(f"└{'─'*72}┘")
+
+        # Error type analysis
+        all_error_types = {}
+        for e in episodes:
+            for etype, cnt in e.get("error_types", {}).items():
+                all_error_types[etype] = all_error_types.get(etype, 0) + cnt
+        if all_error_types:
+            print(f"\nError types:")
+            for etype, cnt in sorted(all_error_types.items(), key=lambda x: -x[1]):
+                print(f"  {etype:<30} {cnt:>5}")
 
         # Tool usage
-        tool_counts = {}
+        all_tool_counts = {}
         for e in episodes:
-            for t in e.get("tool_sequence", []):
-                tool_counts[t] = tool_counts.get(t, 0) + 1
-        print(f"\nTool usage (total / per-episode):")
-        for t, c in sorted(tool_counts.items(), key=lambda x: -x[1]):
-            print(f"  {t:<25} {c:>5} ({c/total:.1f}/ep)")
+            for t, c in e.get("tool_counts", {}).items():
+                all_tool_counts[t] = all_tool_counts.get(t, 0) + c
+        print(f"\nTool usage (total / per-task):")
+        for t, c in sorted(all_tool_counts.items(), key=lambda x: -x[1]):
+            print(f"  {t:<25} {c:>5} ({c/total:.1f}/task)")
 
-        # Unresolved errors
-        unresolved = [e for e in episodes if not e["pass_at_final"]]
-        if unresolved:
-            print(f"\nUnresolved tasks ({len(unresolved)}):")
-            for e in unresolved:
-                errs = e.get("errors_encountered", [])
-                last_err = errs[-1][:80] if errs else "no error captured"
+        # Unresolved
+        unresolved_eps = [e for e in episodes if not e["resolved"]]
+        if unresolved_eps:
+            print(f"\nUnresolved tasks ({len(unresolved_eps)}):")
+            for e in unresolved_eps:
+                errs = e.get("unique_errors", [])
+                last_err = errs[0][:80] if errs else "no error"
                 print(f"  {e['task_id']} L{e['level']} {e['template_type']}: {last_err}")
 
         # Save
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+        def level_stats(lv):
+            lv_eps = [e for e in episodes if e["level"] == lv]
+            n = max(len(lv_eps), 1)
+            return {
+                "total": len(lv_eps),
+                "resolved_rate": sum(1 for e in lv_eps if e["resolved"]) / n,
+                "first_try_valid_rate": sum(1 for e in lv_eps if e["first_try_valid"]) / n,
+                "fix_rate": sum(1 for e in lv_eps if e["fix_rate"]) / n,
+                "avg_turns": sum(e["total_turns"] for e in lv_eps) / n,
+                "avg_validates": sum(e["validate_attempts"] for e in lv_eps) / n,
+            }
+
         summary = {
             "model": model,
             "experiment": "claude_baseline",
             "total": total,
-            "pass_at_1": pass_1 / total,
-            "pass_at_final": pass_f / total,
-            "avg_turns": sum(e["total_turns"] for e in episodes) / total,
+            "resolved_rate": resolved / total,
+            "first_try_valid_rate": first_try / total,
+            "fix_rate": fixed / total,
+            "avg_turns": avg_turns,
+            "avg_validates": avg_validates,
+            "avg_turns_to_resolve": avg_resolve_turns,
             "total_cost_usd": total_cost,
+            "cost_per_task": cost_per_task,
+            "cost_per_resolve": cost_per_resolve,
+            "error_types": all_error_types,
             "by_level": {
-                lv: {
-                    "total": len([e for e in episodes if e["level"] == lv]),
-                    "pass_at_1": sum(1 for e in episodes if e["level"] == lv and e["pass_at_1"]) / max(len([e for e in episodes if e["level"] == lv]), 1),
-                    "pass_at_final": sum(1 for e in episodes if e["level"] == lv and e["pass_at_final"]) / max(len([e for e in episodes if e["level"] == lv]), 1),
-                }
+                lv: level_stats(lv)
                 for lv in sorted(set(e["level"] for e in episodes))
             },
             "episodes": episodes,
@@ -279,7 +330,14 @@ if __name__ == "__main__":
     parser.add_argument("--max-samples", type=int, default=999)
     parser.add_argument("--max-turns", type=int, default=20)
     parser.add_argument("--model", default="claude-sonnet-4-20250514")
-    parser.add_argument("--output", default="experiments/results/claude_baseline.json")
+    parser.add_argument("--output-path", default="experiments/results/claude_baseline.json")
     args = parser.parse_args()
 
-    run_evaluation(**vars(args))
+    run_evaluation(
+        data_path=args.data_path,
+        horizon_path=args.horizon_path,
+        max_samples=args.max_samples,
+        max_turns=args.max_turns,
+        model=args.model,
+        output_path=args.output_path,
+    )
