@@ -55,7 +55,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "grep",
-            "description": "Search for a text pattern across files in the theme. Use to find how specific settings, block types, or patterns are used.",
+            "description": "Search for a pattern across files in the theme. Supports regex. Use to find how specific settings, block types, or patterns are used. Case-insensitive. Can search a directory or a single file.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -328,12 +328,21 @@ class AgentWorkspace:
         else:
             files_to_search = list(search_path.rglob("*"))
 
+        # Compile regex (fall back to literal match if invalid regex)
+        try:
+            import re
+            regex = re.compile(pattern, re.IGNORECASE)
+            use_regex = True
+        except re.error:
+            use_regex = False
+
         for f in files_to_search:
             if f.is_file() and f.suffix in (".liquid", ".json"):
                 try:
                     content = f.read_text()
                     for i, line in enumerate(content.split("\n"), 1):
-                        if pattern.lower() in line.lower():
+                        matched = regex.search(line) if use_regex else (pattern.lower() in line.lower())
+                        if matched:
                             try:
                                 rel = str(f.relative_to(Path(self.horizon_path)))
                             except ValueError:
