@@ -414,14 +414,8 @@ class AgentWorkspace:
                 })
                 continue
 
-            # Determine template type from path
-            # templates/page.about.json → page.about
-            if file_path.startswith("templates/") and file_path.endswith(".json"):
-                tpl_type = file_path[len("templates/"):-len(".json")]
-            else:
-                tpl_type = file_path
-
-            result = self.validator.validate(tpl_type, content)
+            # Pass file_path directly — validator handles .json vs .liquid
+            result = self.validator.validate(file_path, content)
 
             if result.all_passed:
                 all_passed.append(file_path)
