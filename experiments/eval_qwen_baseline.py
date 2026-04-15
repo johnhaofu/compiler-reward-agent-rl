@@ -1,15 +1,26 @@
 """
-Qwen2.5-Coder Agent Loop Baseline via vLLM OpenAI-compatible API.
+Qwen Agent Loop Baseline via vLLM OpenAI-compatible API.
 
-Start vLLM server first:
-  python -m vllm.entrypoints.openai.api_server \
-    --model /root/autodl-tmp/models/Qwen2.5-Coder-7B-Instruct \
+Supports both Qwen2.5-Coder and Qwen3.5 models.
+
+For Qwen3.5-4B (recommended):
+  VLLM_USE_MODELSCOPE=true vllm serve Qwen/Qwen3.5-4B \
+    --port 8000 --tensor-parallel-size 1 --max-model-len 32768 \
+    --gpu-memory-utilization 0.85 \
+    --reasoning-parser qwen3 \
+    --enable-auto-tool-choice --tool-call-parser qwen3_coder
+
+For Qwen2.5-Coder-7B:
+  vllm serve /root/autodl-tmp/models/Qwen2.5-Coder-7B-Instruct \
     --dtype half --max-model-len 8192 --gpu-memory-utilization 0.85 \
     --host 0.0.0.0 --port 8000 \
-    --enable-auto-tool-choice --tool-call-parser hermes
+    --enable-auto-tool-choice \
+    --tool-parser-plugin /root/autodl-tmp/qwen-tool-parser/qwen2_5_coder_tool_parser.py \
+    --tool-call-parser qwen2_5_coder \
+    --chat-template /root/autodl-tmp/qwen-tool-parser/tool_chat_template_qwen2_5_coder.jinja
 
 Then run:
-  python experiments/eval_qwen_baseline.py
+  python experiments/eval_qwen_baseline.py [--model-name Qwen3.5-4B]
 """
 
 import json
@@ -31,15 +42,31 @@ def build_openai_tools(tools: list) -> list:
     return tools
 
 
+def _strip_thinking(msg_dict: dict) -> dict:
+    """Strip thinking content from assistant message before adding to history.
+
+    Qwen3.5 with reasoning-parser produces reasoning_content in the response.
+    Per best practices, history should NOT include thinking content.
+    """
+    cleaned = dict(msg_dict)
+    # vLLM reasoning-parser puts thinking in 'reasoning_content' field
+    cleaned.pop("reasoning_content", None)
+    return cleaned
+
+
 def run_episode(
     client: OpenAI,
     model_name: str,
     workspace: AgentWorkspace,
     task_prompt: str,
     max_turns: int = 50,
-    temperature: float = 0.7,
+    temperature: float = 0.6,
+    max_tokens: int = 8192,
 ) -> dict:
-    """Run one agent episode via OpenAI-compatible API (vLLM)."""
+    """Run one agent episode via OpenAI-compatible API (vLLM).
+
+    Supports both Qwen2.5-Coder and Qwen3.5 (with thinking mode).
+    """
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -58,7 +85,7 @@ def run_episode(
                 tools=TOOLS,
                 tool_choice="auto",
                 temperature=temperature,
-                max_tokens=4096,
+                max_tokens=max_tokens,
             )
         except Exception as e:
             print(f"    API error: {e}")
@@ -69,8 +96,8 @@ def run_episode(
         total_input_tokens += response.usage.prompt_tokens if response.usage else 0
         total_output_tokens += response.usage.completion_tokens if response.usage else 0
 
-        # Append assistant message
-        messages.append(message.model_dump())
+        # Append assistant message (strip thinking content from history)
+        messages.append(_strip_thinking(message.model_dump()))
 
         # Check for tool calls
         if not message.tool_calls:
@@ -114,12 +141,13 @@ def run_episode(
 
 def run_evaluation(
     api_base: str = "http://localhost:8000/v1",
-    model_name: str = "Qwen2.5-Coder-7B-Instruct",
+    model_name: str = "Qwen3.5-4B",
     data_path: str = "data/prompts/eval_fixed.jsonl",
     horizon_path: str = "/root/autodl-tmp/horizon",
     max_samples: int = 999,
     max_turns: int = 50,
-    temperature: float = 0.7,
+    temperature: float = 0.6,
+    max_tokens: int = 8192,
     output_path: str = "experiments/results/qwen_baseline.json",
     run_id: int = 1,
 ):
@@ -169,6 +197,7 @@ def run_evaluation(
                 task_prompt=task_prompt,
                 max_turns=max_turns,
                 temperature=temperature,
+                max_tokens=max_tokens,
             )
             metrics["wall_time"] = round(time.time() - t0, 2)
             metrics["task_id"] = task_id
@@ -262,12 +291,13 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-base", default="http://localhost:8000/v1")
-    parser.add_argument("--model-name", default="Qwen2.5-Coder-7B-Instruct")
+    parser.add_argument("--model-name", default="Qwen3.5-4B")
     parser.add_argument("--data-path", default="data/prompts/eval_fixed.jsonl")
     parser.add_argument("--horizon-path", default="/root/autodl-tmp/horizon")
     parser.add_argument("--max-samples", type=int, default=999)
     parser.add_argument("--max-turns", type=int, default=50)
-    parser.add_argument("--temperature", type=float, default=0.7)
+    parser.add_argument("--temperature", type=float, default=0.6)
+    parser.add_argument("--max-tokens", type=int, default=8192)
     parser.add_argument("--output-path", default="experiments/results/qwen_baseline.json")
     parser.add_argument("--run-id", type=int, default=1)
     args = parser.parse_args()

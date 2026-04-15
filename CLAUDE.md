@@ -8,9 +8,11 @@ Using compiler/linter feedback as reward signals for RL training of coding agent
 
 ## Key Decisions
 
-- Base model: Qwen2.5-Coder-3B-Instruct + QLoRA 4-bit
+- Base model: Qwen3.5-4B (hybrid GatedDeltaNet+MoE, text-only mode)
+- Baselines: Claude Sonnet 4 (upper bound), Qwen2.5-Coder-7B (weak baseline)
 - Training: Unsloth + TRL GRPOTrainer
-- Environment: Shopify Horizon theme, validated via `shopify theme check`
+- Inference: vLLM nightly with --tool-call-parser qwen3_coder --reasoning-parser qwen3
+- Environment: Shopify Horizon theme, validated via Sitemuse API
 - Reward: Binary signals (pass/fail), not continuous scores
 
 ## Code Conventions

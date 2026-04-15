@@ -28,9 +28,12 @@ uv pip install requests jsonschema pyyaml wandb matplotlib pandas openai --index
 
 ## 2. Download Model
 
+vLLM can auto-download from ModelScope with `VLLM_USE_MODELSCOPE=true` (no manual download needed).
+
+Or download manually:
 ```bash
 pip install modelscope
-modelscope download --model Qwen/Qwen2.5-Coder-7B-Instruct --local_dir /root/autodl-tmp/models/Qwen2.5-Coder-7B-Instruct
+modelscope download --model Qwen/Qwen3.5-4B --local_dir /root/autodl-tmp/models/Qwen3.5-4B
 ```
 
 ## 3. Clone Repos
@@ -47,11 +50,32 @@ git clone --depth 1 https://github.com/Shopify/horizon.git /root/autodl-tmp/hori
 
 ## 4. Start vLLM Server
 
+### Qwen3.5-4B (recommended)
+```bash
+# Auto-download from ModelScope + tool calling
+VLLM_USE_MODELSCOPE=true vllm serve Qwen/Qwen3.5-4B \
+  --port 8000 --tensor-parallel-size 1 --max-model-len 32768 \
+  --gpu-memory-utilization 0.85 \
+  --reasoning-parser qwen3 \
+  --enable-auto-tool-choice --tool-call-parser qwen3_coder
+
+# Or use local model path:
+# vllm serve /root/autodl-tmp/models/Qwen3.5-4B \
+#   --port 8000 --tensor-parallel-size 1 --max-model-len 32768 \
+#   --gpu-memory-utilization 0.85 \
+#   --reasoning-parser qwen3 \
+#   --enable-auto-tool-choice --tool-call-parser qwen3_coder
+```
+
+### Qwen2.5-Coder-7B (legacy baseline)
 ```bash
 vllm serve /root/autodl-tmp/models/Qwen2.5-Coder-7B-Instruct \
   --dtype half --max-model-len 8192 --gpu-memory-utilization 0.85 \
   --host 0.0.0.0 --port 8000 \
-  --enable-auto-tool-choice --tool-call-parser hermes
+  --enable-auto-tool-choice \
+  --tool-parser-plugin /root/autodl-tmp/qwen-tool-parser/qwen2_5_coder_tool_parser.py \
+  --tool-call-parser qwen2_5_coder \
+  --chat-template /root/autodl-tmp/qwen-tool-parser/tool_chat_template_qwen2_5_coder.jinja
 ```
 
 Verify:
@@ -84,5 +108,11 @@ vLLM 0.19+ requires flash_attn. If `uv pip install vllm --torch-backend=auto` wo
 ### Model download
 Use modelscope (China mirror), not huggingface:
 ```bash
-modelscope download --model Qwen/Qwen2.5-Coder-7B-Instruct --local_dir /root/autodl-tmp/models/Qwen2.5-Coder-7B-Instruct
+modelscope download --model Qwen/Qwen3.5-4B --local_dir /root/autodl-tmp/models/Qwen3.5-4B
+```
+
+### Qwen3.5 auto-download
+Use `VLLM_USE_MODELSCOPE=true` env var to auto-download from ModelScope (no manual download needed):
+```bash
+VLLM_USE_MODELSCOPE=true vllm serve Qwen/Qwen3.5-4B --port 8000 ...
 ```
