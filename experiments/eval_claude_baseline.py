@@ -16,6 +16,7 @@ from anthropic import Anthropic
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from environments.tools import TOOLS, SYSTEM_PROMPT, AgentWorkspace
+from evaluation.verify_engine import verify_episode
 from experiments.notify import experiment_start, experiment_done, experiment_error
 
 
@@ -183,24 +184,38 @@ def run_evaluation(
             metrics["template_type"] = tpl_type
             metrics["industry"] = industry
 
+            # Run verify checks (Layer 2: requirements verification)
+            verify_result = verify_episode(item, metrics)
+            metrics["verify_passed"] = verify_result["passed"]
+            metrics["verify_total"] = verify_result["total_checks"]
+            metrics["verify_passed_count"] = verify_result["passed_checks"]
+            metrics["verify_failed"] = verify_result["failed_checks"]
+
+            # Fully resolved = API passed + verify passed
+            metrics["fully_resolved"] = metrics["resolved"] and verify_result["passed"]
+
             episodes.append(metrics)
             total_cost += metrics.get("cost_usd", 0)
 
-            status = "✅" if metrics["resolved"] else "❌"
+            api_status = "✅" if metrics["resolved"] else "❌"
+            verify_status = "✓" if verify_result["passed"] else f"✗{verify_result['passed_checks']}/{verify_result['total_checks']}"
             ftv = "1st✓" if metrics["first_try_valid"] else "fix" if metrics["fix_rate"] else "fail"
-            print(f"  {status} turns={metrics['total_turns']} "
-                  f"validates={metrics['validate_attempts']} "
-                  f"[{ftv}] "
-                  f"${metrics['cost_usd']:.3f}")
+            print(f"  {api_status} API [{ftv}] | verify:{verify_status} | "
+                  f"turns={metrics['total_turns']} ${metrics['cost_usd']:.3f}")
+            if verify_result["failed_checks"]:
+                for fc in verify_result["failed_checks"][:2]:
+                    print(f"    verify fail: {fc['reason'][:80]}")
 
             workspace.cleanup()
 
         # ═══ Summary ═══
         total = len(episodes)
         resolved = sum(1 for e in episodes if e["resolved"])
+        fully_resolved = sum(1 for e in episodes if e.get("fully_resolved", False))
         first_try = sum(1 for e in episodes if e["first_try_valid"])
         fixed = sum(1 for e in episodes if e["fix_rate"])
-        failed = total - resolved
+        verify_passed = sum(1 for e in episodes if e.get("verify_passed", False))
+        failed = total - fully_resolved
         resolved_eps = [e for e in episodes if e["resolved"]]
 
         print(f"\n{'='*70}")
@@ -212,9 +227,11 @@ def run_evaluation(
         print(f"│ {'Metric':<30} {'Value':>18} │")
         print(f"├{'─'*50}┤")
         print(f"│ {'Total tasks':<30} {total:>18} │")
-        print(f"│ {'Resolved Rate':<30} {f'{resolved}/{total} ({resolved*100//total}%)':>18} │")
+        print(f"│ {'API Resolved':<30} {f'{resolved}/{total} ({resolved*100//total}%)':>18} │")
         print(f"│ {'  ├ First-try Valid':<30} {f'{first_try}/{total} ({first_try*100//total}%)':>18} │")
         print(f"│ {'  └ Fixed after Error':<30} {f'{fixed}/{total} ({fixed*100//total}%)':>18} │")
+        print(f"│ {'Verify Passed':<30} {f'{verify_passed}/{total} ({verify_passed*100//total}%)':>18} │")
+        print(f"│ {'★ Fully Resolved':<30} {f'{fully_resolved}/{total} ({fully_resolved*100//total}%)':>18} │")
         print(f"│ {'Failed':<30} {f'{failed}/{total} ({failed*100//total}%)':>18} │")
         print(f"├{'─'*50}┤")
         avg_turns = sum(e["total_turns"] for e in episodes) / total
@@ -234,19 +251,21 @@ def run_evaluation(
         print(f"└{'─'*50}┘")
 
         # By level
-        print(f"\n┌{'─'*72}┐")
-        print(f"│ {'Level':<28} {'Resolved':>10} {'1st-try':>10} {'Fixed':>10} {'Turns':>10} │")
-        print(f"├{'─'*72}┤")
+        print(f"\n┌{'─'*82}┐")
+        print(f"│ {'Level':<24} {'API OK':>8} {'Verify':>8} {'★Full':>8} {'1st✓':>8} {'Fix':>8} {'Turns':>8} │")
+        print(f"├{'─'*82}┤")
         for lv in sorted(set(e["level"] for e in episodes)):
             lv_eps = [e for e in episodes if e["level"] == lv]
             lv_name = lv_eps[0].get("level_name", "")
+            n = len(lv_eps)
             lv_resolved = sum(1 for e in lv_eps if e["resolved"])
+            lv_verify = sum(1 for e in lv_eps if e.get("verify_passed", False))
+            lv_full = sum(1 for e in lv_eps if e.get("fully_resolved", False))
             lv_first = sum(1 for e in lv_eps if e["first_try_valid"])
             lv_fixed = sum(1 for e in lv_eps if e["fix_rate"])
-            lv_turns = sum(e["total_turns"] for e in lv_eps) / len(lv_eps)
-            n = len(lv_eps)
-            print(f"│ L{lv} {lv_name:<25} {f'{lv_resolved}/{n}':>10} {f'{lv_first}/{n}':>10} {f'{lv_fixed}/{n}':>10} {lv_turns:>10.1f} │")
-        print(f"└{'─'*72}┘")
+            lv_turns = sum(e["total_turns"] for e in lv_eps) / n
+            print(f"│ L{lv} {lv_name:<21} {f'{lv_resolved}/{n}':>8} {f'{lv_verify}/{n}':>8} {f'{lv_full}/{n}':>8} {f'{lv_first}/{n}':>8} {f'{lv_fixed}/{n}':>8} {lv_turns:>8.1f} │")
+        print(f"└{'─'*82}┘")
 
         # Error type analysis
         all_error_types = {}
