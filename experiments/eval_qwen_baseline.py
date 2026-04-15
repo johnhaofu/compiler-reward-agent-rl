@@ -225,13 +225,13 @@ def run_evaluation(
             lv_eps = [e for e in episodes if e["level"] == lv]
             n = len(lv_eps)
             lv_name = lv_eps[0].get("level_name", "")
-            print(f"│ L{lv} {lv_name:<21} "
-                  f"{f'{sum(1 for e in lv_eps if e[\"resolved\"])}/{n}':>8} "
-                  f"{f'{sum(1 for e in lv_eps if e.get(\"verify_passed\"))}/{n}':>8} "
-                  f"{f'{sum(1 for e in lv_eps if e.get(\"fully_resolved\"))}/{n}':>8} "
-                  f"{f'{sum(1 for e in lv_eps if e[\"first_try_valid\"])}/{n}':>8} "
-                  f"{f'{sum(1 for e in lv_eps if e[\"fix_rate\"])}/{n}':>8} "
-                  f"{sum(e['total_turns'] for e in lv_eps)/n:>8.1f} │")
+            api_ok = sum(1 for e in lv_eps if e["resolved"])
+            vfy_ok = sum(1 for e in lv_eps if e.get("verify_passed"))
+            full_ok = sum(1 for e in lv_eps if e.get("fully_resolved"))
+            fst_ok = sum(1 for e in lv_eps if e["first_try_valid"])
+            fix_ok = sum(1 for e in lv_eps if e["fix_rate"])
+            avg_t = sum(e["total_turns"] for e in lv_eps) / n
+            print(f"│ L{lv} {lv_name:<21} {api_ok}/{n:>5} {vfy_ok}/{n:>5} {full_ok}/{n:>5} {fst_ok}/{n:>5} {fix_ok}/{n:>5} {avg_t:>8.1f} │")
         print(f"└{'─'*82}┘")
 
         # Save
