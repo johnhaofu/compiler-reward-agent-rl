@@ -241,6 +241,7 @@ The templates must be compatible with the Horizon theme and pass Shopify's valid
 - Output valid JSON in write_file — no comments, no markdown
 - Always validate before calling done
 - If validation fails, fix based on the error message and validate again
+- IMPORTANT: Some sections have static blocks (like 'static-header', 'static-product-card') that are auto-managed by the section. Do NOT include static blocks in your template JSON — only include non-static blocks you want to customize. If you see static blocks when reading an existing template, omit them when writing your version.
 """
 
 
