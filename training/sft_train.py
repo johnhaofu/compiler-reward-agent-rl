@@ -135,15 +135,11 @@ def main():
         gradient_checkpointing=True,
     )
 
-    def formatting_func(examples):
-        """Format messages using tokenizer's chat template."""
-        texts = []
-        for msgs in examples["messages"]:
-            text = tokenizer.apply_chat_template(
-                msgs, tokenize=False, add_generation_prompt=False
-            )
-            texts.append(text)
-        return texts
+    def formatting_func(example):
+        """Format a single example's messages using tokenizer's chat template."""
+        return tokenizer.apply_chat_template(
+            example["messages"], tokenize=False, add_generation_prompt=False
+        )
 
     trainer = SFTTrainer(
         model=model,
