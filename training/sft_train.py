@@ -168,7 +168,7 @@ def main():
 
     # Save training config
     config = vars(args)
-    config["num_examples"] = len(formatted)
+    config["num_examples"] = len(texts)
     with open(Path(args.output_dir) / "sft_config.json", "w") as f:
         json.dump(config, f, indent=2)
 
