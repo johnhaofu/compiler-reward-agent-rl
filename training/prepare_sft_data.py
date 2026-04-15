@@ -148,7 +148,7 @@ def synthesize_trajectory(
                 "type": "function",
                 "function": {
                     "name": "list_components",
-                    "arguments": "{}"
+                    "arguments": {}
                 }
             }]
         })
@@ -171,7 +171,7 @@ def synthesize_trajectory(
                 "type": "function",
                 "function": {
                     "name": "get_section_schema",
-                    "arguments": json.dumps({"section_name": main_type})
+                    "arguments": {"section_name": main_type}
                 }
             }]
         })
@@ -191,10 +191,10 @@ def synthesize_trajectory(
             "type": "function",
             "function": {
                 "name": "write_file",
-                "arguments": json.dumps({
+                "arguments": {
                     "path": file_path,
                     "content": ground_truth
-                })
+                }
             }
         }]
     })
@@ -218,7 +218,7 @@ def synthesize_trajectory(
             "type": "function",
             "function": {
                 "name": "validate",
-                "arguments": json.dumps({"files": [file_path]})
+                "arguments": {"files": [file_path]}
             }
         }]
     })
@@ -242,10 +242,10 @@ def synthesize_trajectory(
             "type": "function",
             "function": {
                 "name": "done",
-                "arguments": json.dumps({
+                "arguments": {
                     "status": "success",
                     "summary": summary
-                })
+                }
             }
         }]
     })
