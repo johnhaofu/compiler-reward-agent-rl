@@ -105,13 +105,28 @@ def main():
     print(f"LoRA params: r={args.lora_r}, alpha={args.lora_alpha}")
     model.print_trainable_parameters()
 
-    # ── Load dataset ──
+    # ── Load and pre-format dataset ──
+    # Pre-apply chat template to avoid HF Dataset mangling nested tool_calls
     raw_items = load_sft_dataset(args.data_path)
-    formatted = format_for_trl(raw_items)
-    print(f"Training examples: {len(formatted)}")
+    texts = []
+    skipped = 0
+    for item in raw_items:
+        msgs = item["messages"]
+        if len(msgs) < 4:
+            skipped += 1
+            continue
+        try:
+            text = tokenizer.apply_chat_template(
+                msgs, tokenize=False, add_generation_prompt=False
+            )
+            texts.append(text)
+        except Exception as e:
+            skipped += 1
+            print(f"  Skipped: {e}")
+    print(f"Training examples: {len(texts)} (skipped {skipped})")
 
     from datasets import Dataset
-    dataset = Dataset.from_list(formatted)
+    dataset = Dataset.from_dict({"text": texts})
 
     # ── Train with TRL SFTTrainer ──
     from trl import SFTTrainer, SFTConfig
@@ -133,19 +148,13 @@ def main():
         seed=args.seed,
         report_to="none",
         gradient_checkpointing=True,
+        dataset_text_field="text",
     )
-
-    def formatting_func(example):
-        """Format a single example's messages using tokenizer's chat template."""
-        return tokenizer.apply_chat_template(
-            example["messages"], tokenize=False, add_generation_prompt=False
-        )
 
     trainer = SFTTrainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
-        formatting_func=formatting_func,
         processing_class=tokenizer,
     )
 
