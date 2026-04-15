@@ -421,8 +421,11 @@ class AgentWorkspace:
 
         return json.dumps({"success": True, "path": path, "size": len(content)})
 
-    def _edit_json(self, path: str, operations: list) -> str:
+    def _edit_json(self, path: str, operations) -> str:
         """Apply JSON Patch operations to an existing JSON file."""
+        # Auto-parse if model passed operations as JSON string instead of list
+        if isinstance(operations, str):
+            operations = json.loads(operations)
         # Read existing content — workspace first, then base theme
         content = self.workspace_files.get(path)
         if not content:
