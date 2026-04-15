@@ -347,7 +347,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-path", default="data/prompts/eval_fixed.jsonl")
     parser.add_argument("--horizon-path", default="/tmp/horizon")
     parser.add_argument("--max-samples", type=int, default=999)
-    parser.add_argument("--max-turns", type=int, default=20)
+    parser.add_argument("--max-turns", type=int, default=50)
     parser.add_argument("--model", default="claude-sonnet-4-20250514")
     parser.add_argument("--output-path", default="experiments/results/claude_baseline.json")
     args = parser.parse_args()

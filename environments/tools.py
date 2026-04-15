@@ -97,6 +97,49 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "edit_json",
+            "description": "Apply JSON Patch operations (RFC 6902) to an existing JSON file. Use for modifying settings, adding/removing blocks, or changing section order without rewriting the entire file. Much more efficient than write_file for small changes to large templates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Relative path to the JSON file. Example: 'templates/index.json'"
+                    },
+                    "operations": {
+                        "type": "array",
+                        "description": "JSON Patch operations (RFC 6902). Each operation has 'op', 'path', and optionally 'value' or 'from'.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "op": {
+                                    "type": "string",
+                                    "enum": ["add", "remove", "replace", "move", "copy"],
+                                    "description": "Operation type"
+                                },
+                                "path": {
+                                    "type": "string",
+                                    "description": "JSON Pointer to target location. Example: '/sections/hero_abc/settings/color_scheme'"
+                                },
+                                "value": {
+                                    "description": "Value for add/replace operations"
+                                },
+                                "from": {
+                                    "type": "string",
+                                    "description": "Source path for move/copy operations"
+                                }
+                            },
+                            "required": ["op", "path"]
+                        }
+                    }
+                },
+                "required": ["path", "operations"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_components",
             "description": "List all available section types and block types in the Horizon theme with brief descriptions. Use before generating templates to know what components are available.",
             "parameters": {
@@ -179,6 +222,7 @@ The templates must be compatible with the Horizon theme and pass Shopify's valid
 - **read_file**: Read existing files to understand patterns and schemas
 - **grep**: Search across files for specific patterns or settings usage
 - **write_file**: Create or update files in the workspace
+- **edit_json**: Apply JSON Patch operations to modify existing JSON files (more efficient than rewriting)
 - **list_components**: Get all available section and block types with descriptions
 - **get_section_schema**: Get detailed schema for a specific section (settings + block types)
 - **validate**: Check files against Shopify's theme validation API
@@ -249,6 +293,7 @@ class AgentWorkspace:
             "read_file": self._read_file,
             "grep": self._grep,
             "write_file": self._write_file,
+            "edit_json": self._edit_json,
             "list_components": self._list_components,
             "get_section_schema": self._get_section_schema,
             "validate": self._validate,
@@ -374,6 +419,74 @@ class AgentWorkspace:
         full_path.write_text(content)
 
         return json.dumps({"success": True, "path": path, "size": len(content)})
+
+    def _edit_json(self, path: str, operations: list) -> str:
+        """Apply JSON Patch operations to an existing JSON file."""
+        # Read existing content — workspace first, then base theme
+        content = self.workspace_files.get(path)
+        if not content:
+            full_path = Path(self.horizon_path) / path
+            if full_path.exists():
+                content = full_path.read_text()
+                # Strip comment header from Horizon templates
+                lines = content.strip().split("\n")
+                json_lines = []
+                started = False
+                for line in lines:
+                    if not started and line.strip().startswith("{"):
+                        started = True
+                    if started:
+                        json_lines.append(line)
+                content = "\n".join(json_lines) if json_lines else content
+            else:
+                return json.dumps({"error": f"File not found: {path}"})
+
+        # Parse JSON
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError as e:
+            return json.dumps({"error": f"Cannot parse JSON: {e}"})
+
+        # Apply each operation (RFC 6902 JSON Patch)
+        errors = []
+        for i, op in enumerate(operations):
+            try:
+                op_type = op.get("op")
+                pointer = op.get("path", "")
+                value = op.get("value")
+                from_path = op.get("from")
+
+                if op_type == "replace":
+                    _json_pointer_set(data, pointer, value)
+                elif op_type == "add":
+                    _json_pointer_add(data, pointer, value)
+                elif op_type == "remove":
+                    _json_pointer_remove(data, pointer)
+                elif op_type == "move":
+                    val = _json_pointer_get(data, from_path)
+                    _json_pointer_remove(data, from_path)
+                    _json_pointer_add(data, pointer, val)
+                elif op_type == "copy":
+                    val = _json_pointer_get(data, from_path)
+                    _json_pointer_add(data, pointer, val)
+                else:
+                    errors.append(f"Op {i}: unknown op '{op_type}'")
+            except Exception as e:
+                errors.append(f"Op {i} ({op_type} {pointer}): {e}")
+
+        if errors:
+            return json.dumps({"error": "Some operations failed", "details": errors,
+                               "applied": len(operations) - len(errors)})
+
+        # Write back
+        new_content = json.dumps(data, indent=2, ensure_ascii=False)
+        self.workspace_files[path] = new_content
+        full_path = Path(self.workspace_dir) / path
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_text(new_content)
+
+        return json.dumps({"success": True, "path": path, "size": len(new_content),
+                           "operations_applied": len(operations)})
 
     def _list_components(self) -> str:
         """List all available sections and blocks."""
@@ -606,3 +719,72 @@ class AgentWorkspace:
         import shutil
         if self.workspace_dir and Path(self.workspace_dir).exists():
             shutil.rmtree(self.workspace_dir, ignore_errors=True)
+
+
+# ── JSON Pointer helpers (RFC 6901) ──
+
+def _parse_pointer(pointer: str) -> list[str]:
+    """Parse JSON Pointer '/a/b/c' → ['a', 'b', 'c']."""
+    if not pointer or pointer == "/":
+        return []
+    parts = pointer.strip("/").split("/")
+    # Unescape ~1 → / and ~0 → ~
+    return [p.replace("~1", "/").replace("~0", "~") for p in parts]
+
+
+def _json_pointer_get(data, pointer: str):
+    """Get value at JSON Pointer path."""
+    parts = _parse_pointer(pointer)
+    current = data
+    for part in parts:
+        if isinstance(current, dict):
+            current = current[part]
+        elif isinstance(current, list):
+            current = current[int(part)]
+        else:
+            raise KeyError(f"Cannot traverse into {type(current)} at '{part}'")
+    return current
+
+
+def _json_pointer_set(data, pointer: str, value):
+    """Set value at JSON Pointer path (replace)."""
+    parts = _parse_pointer(pointer)
+    if not parts:
+        raise ValueError("Cannot replace root")
+    parent = _json_pointer_get(data, "/" + "/".join(parts[:-1])) if len(parts) > 1 else data
+    key = parts[-1]
+    if isinstance(parent, dict):
+        if key not in parent:
+            raise KeyError(f"Key '{key}' not found for replace")
+        parent[key] = value
+    elif isinstance(parent, list):
+        parent[int(key)] = value
+
+
+def _json_pointer_add(data, pointer: str, value):
+    """Add value at JSON Pointer path."""
+    parts = _parse_pointer(pointer)
+    if not parts:
+        raise ValueError("Cannot add to root")
+    parent = _json_pointer_get(data, "/" + "/".join(parts[:-1])) if len(parts) > 1 else data
+    key = parts[-1]
+    if isinstance(parent, dict):
+        parent[key] = value
+    elif isinstance(parent, list):
+        if key == "-":
+            parent.append(value)
+        else:
+            parent.insert(int(key), value)
+
+
+def _json_pointer_remove(data, pointer: str):
+    """Remove value at JSON Pointer path."""
+    parts = _parse_pointer(pointer)
+    if not parts:
+        raise ValueError("Cannot remove root")
+    parent = _json_pointer_get(data, "/" + "/".join(parts[:-1])) if len(parts) > 1 else data
+    key = parts[-1]
+    if isinstance(parent, dict):
+        del parent[key]
+    elif isinstance(parent, list):
+        del parent[int(key)]
