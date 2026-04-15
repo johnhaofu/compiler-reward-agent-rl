@@ -1,0 +1,141 @@
+"""
+Generate fixed evaluation set: every page type covered, deterministic, reproducible.
+"""
+
+import json
+from pathlib import Path
+
+# Fixed eval set: 2 prompts per page type, hand-crafted for diversity
+EVAL_SET = [
+    # ── Existing Horizon templates (have ground truth) ──
+    {"template_type": "index", "industry": "jewelry", "complexity": "high",
+     "prompt": "Generate a homepage template for a luxury jewelry brand. Include a hero banner with CTA, featured collection, and product recommendations."},
+    {"template_type": "index", "industry": "fitness", "complexity": "high",
+     "prompt": "Generate a homepage for a fitness equipment store. Include hero section, product list, and promotional carousel."},
+
+    {"template_type": "collection", "industry": "fashion", "complexity": "medium",
+     "prompt": "Generate a collection page template for a fashion clothing brand with collection title, description, and product grid with filters."},
+    {"template_type": "collection", "industry": "electronics", "complexity": "medium",
+     "prompt": "Generate a collection page for an electronics store with product grid, filter sidebar, and collection header."},
+
+    {"template_type": "product", "industry": "beauty", "complexity": "high",
+     "prompt": "Generate a product detail page for a beauty brand. Include product media gallery, product information with price, add to cart, and product recommendations."},
+    {"template_type": "product", "industry": "watches", "complexity": "high",
+     "prompt": "Generate a product page for a luxury watch store with image gallery, product details, variant picker, and related products."},
+
+    {"template_type": "page", "industry": "home decor", "complexity": "low",
+     "prompt": "Generate a simple content page template with page title and page content for a home decor brand."},
+    {"template_type": "page", "industry": "books", "complexity": "low",
+     "prompt": "Generate a generic page template with heading and rich text content area."},
+
+    {"template_type": "page.contact", "industry": "jewelry", "complexity": "low",
+     "prompt": "Generate a contact us page with page title, intro text, and a contact form."},
+    {"template_type": "page.contact", "industry": "pet supplies", "complexity": "low",
+     "prompt": "Generate a contact page for a pet supply store with title, company info, and contact form section."},
+
+    {"template_type": "blog", "industry": "outdoor gear", "complexity": "low",
+     "prompt": "Generate a blog listing page template with blog title and blog post cards grid."},
+    {"template_type": "blog", "industry": "food", "complexity": "low",
+     "prompt": "Generate a blog page for a food & beverage brand showing recent blog posts."},
+
+    {"template_type": "article", "industry": "travel", "complexity": "low",
+     "prompt": "Generate a blog article page with post title, post details, featured image, and content."},
+    {"template_type": "article", "industry": "health", "complexity": "low",
+     "prompt": "Generate a single blog post page template with title, author info, image, and article content."},
+
+    {"template_type": "cart", "industry": "fashion", "complexity": "medium",
+     "prompt": "Generate a shopping cart page with cart items list, cart summary, and product recommendations."},
+    {"template_type": "cart", "industry": "toys", "complexity": "medium",
+     "prompt": "Generate a cart page template with cart title, product list, order summary, and recommended products."},
+
+    {"template_type": "search", "industry": "electronics", "complexity": "medium",
+     "prompt": "Generate a search results page with search header, search input, and filterable results grid."},
+    {"template_type": "search", "industry": "beauty", "complexity": "medium",
+     "prompt": "Generate a search page template with search bar and product results with filters."},
+
+    {"template_type": "list-collections", "industry": "art", "complexity": "medium",
+     "prompt": "Generate a page showing all collections with collection cards and images."},
+    {"template_type": "list-collections", "industry": "gardening", "complexity": "medium",
+     "prompt": "Generate an all-collections listing page for a gardening store with collection cards."},
+
+    {"template_type": "404", "industry": "music", "complexity": "low",
+     "prompt": "Generate a 404 error page with a friendly message, return home button, and some product suggestions."},
+    {"template_type": "404", "industry": "stationery", "complexity": "low",
+     "prompt": "Generate a not-found page with error message, CTA button, and product recommendations."},
+
+    {"template_type": "password", "industry": "luxury", "complexity": "low",
+     "prompt": "Generate a store password/coming soon page with logo, announcement text, and email signup."},
+    {"template_type": "password", "industry": "fashion", "complexity": "low",
+     "prompt": "Generate a password page for a pre-launch fashion brand with logo, teaser text, and newsletter signup."},
+
+    # ── Novel page types (no ground truth, must compose) ──
+    {"template_type": "page.about", "industry": "jewelry", "complexity": "medium",
+     "prompt": "Generate an About Us page for a jewelry brand with a hero section telling the brand story, and a content section with company mission."},
+    {"template_type": "page.about", "industry": "fitness", "complexity": "medium",
+     "prompt": "Generate an About Us page for a fitness brand with brand story hero, team introduction, and company values."},
+
+    {"template_type": "page.faq", "industry": "electronics", "complexity": "medium",
+     "prompt": "Generate a FAQ page for an electronics store with page title and multiple collapsible question-answer sections."},
+    {"template_type": "page.faq", "industry": "beauty", "complexity": "medium",
+     "prompt": "Generate a FAQ page for a beauty brand with categorized questions and answers."},
+
+    {"template_type": "page.shipping", "industry": "fashion", "complexity": "low",
+     "prompt": "Generate a shipping policy page with title and rich text content area for shipping information."},
+    {"template_type": "page.shipping", "industry": "food", "complexity": "low",
+     "prompt": "Generate a shipping info page template with heading and detailed shipping policy text."},
+
+    {"template_type": "page.lookbook", "industry": "fashion", "complexity": "high",
+     "prompt": "Generate a lookbook/editorial page for a fashion brand with hero image, media with content sections, and image carousel."},
+    {"template_type": "page.lookbook", "industry": "jewelry", "complexity": "high",
+     "prompt": "Generate a lookbook page for a jewelry brand showcasing collections with hero images and editorial content."},
+
+    {"template_type": "page.testimonials", "industry": "fitness", "complexity": "medium",
+     "prompt": "Generate a customer testimonials page with page title and multiple testimonial content sections."},
+    {"template_type": "page.testimonials", "industry": "beauty", "complexity": "medium",
+     "prompt": "Generate a reviews/testimonials page for a beauty brand with customer quotes and ratings."},
+]
+
+SYSTEM_PROMPT = """You are an expert Shopify theme developer specializing in the Horizon theme.
+Generate valid Shopify template JSON files that are compatible with the Horizon theme.
+
+Rules:
+- Output ONLY valid JSON (no comments, no explanation, no markdown code blocks)
+- The JSON must have "sections" and "order" keys
+- Only use section types that exist in the Horizon theme
+- Only use block types that exist in the Horizon theme
+- Include appropriate settings for each section and block"""
+
+
+def main():
+    output_path = Path("data/prompts/eval_fixed.jsonl")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w") as f:
+        for item in EVAL_SET:
+            record = {
+                "prompt": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": item["prompt"]},
+                ],
+                "template_type": item["template_type"],
+                "industry": item["industry"],
+                "complexity": item["complexity"],
+            }
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    # Stats
+    from collections import Counter
+    type_counts = Counter(item["template_type"] for item in EVAL_SET)
+    comp_counts = Counter(item["complexity"] for item in EVAL_SET)
+
+    print(f"Fixed eval set: {len(EVAL_SET)} samples → {output_path}")
+    print(f"\nPage types ({len(type_counts)}):")
+    for t, c in sorted(type_counts.items()):
+        print(f"  {t}: {c}")
+    print(f"\nComplexity:")
+    for c, n in comp_counts.most_common():
+        print(f"  {c}: {n}")
+
+
+if __name__ == "__main__":
+    main()
