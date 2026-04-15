@@ -312,18 +312,32 @@ class AgentWorkspace:
     def _grep(self, pattern: str, path: str = ".") -> str:
         """Search for pattern in files."""
         results = []
-        search_dir = Path(self.horizon_path) / path
+        search_path = Path(self.horizon_path) / path
 
-        if not search_dir.exists():
-            return json.dumps({"error": f"Directory not found: {path}"})
+        if not search_path.exists():
+            # Also check workspace
+            ws_path = Path(self.workspace_dir) / path if self.workspace_dir else None
+            if ws_path and ws_path.exists():
+                search_path = ws_path
+            else:
+                return json.dumps({"error": f"Path not found: {path}"})
 
-        for f in search_dir.rglob("*"):
+        # Handle both single file and directory
+        if search_path.is_file():
+            files_to_search = [search_path]
+        else:
+            files_to_search = list(search_path.rglob("*"))
+
+        for f in files_to_search:
             if f.is_file() and f.suffix in (".liquid", ".json"):
                 try:
                     content = f.read_text()
                     for i, line in enumerate(content.split("\n"), 1):
                         if pattern.lower() in line.lower():
-                            rel = str(f.relative_to(Path(self.horizon_path)))
+                            try:
+                                rel = str(f.relative_to(Path(self.horizon_path)))
+                            except ValueError:
+                                rel = str(f)
                             results.append(f"{rel}:{i}: {line.strip()[:120]}")
                 except Exception:
                     continue

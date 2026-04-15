@@ -59,14 +59,14 @@ LEVEL_1 = [
     },
     {
         "id": "L1-02",
-        "name": "Change product grid to 3 columns",
+        "name": "Change product card size to large",
         "base_template": "collection",
-        "prompt": "Modify the collection template: change the product grid to display 3 columns on desktop by setting the columns setting to 3 in the main-collection section.",
+        "prompt": "Modify the collection template: change the main-collection section's product_card_size setting to 'large' for bigger product cards on desktop.",
         "preview_path": "/collections/all",
         "verify": {
             "type": "json_check",
             "checks": [
-                {"path": "sections.main.settings.columns", "equals": 3},
+                {"path": "sections.main.settings.product_card_size", "equals": "large"},
             ]
         },
     },
@@ -143,14 +143,13 @@ LEVEL_1 = [
     },
     {
         "id": "L1-08",
-        "name": "Change contact page layout to centered",
+        "name": "Change contact page form to centered",
         "base_template": "page.contact",
-        "prompt": "Modify the contact page template: set the main section's horizontal_alignment_flex_direction_column to 'center' and change the form section's horizontal_alignment_flex_direction_column to 'center' as well.",
+        "prompt": "Modify the contact page template: change the form section's horizontal_alignment_flex_direction_column setting to 'center' so the contact form is centered on the page.",
         "preview_path": "/pages/contact",
         "verify": {
             "type": "json_check",
             "checks": [
-                {"path": "sections.main.settings.horizontal_alignment_flex_direction_column", "equals": "center"},
                 {"path": "sections.form.settings.horizontal_alignment_flex_direction_column", "equals": "center"},
             ]
         },
