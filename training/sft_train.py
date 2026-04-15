@@ -123,7 +123,7 @@ def main():
         gradient_accumulation_steps=args.grad_accum,
         learning_rate=args.lr,
         lr_scheduler_type="cosine",
-        warmup_ratio=args.warmup_ratio,
+        warmup_steps=5,
         weight_decay=0.01,
         logging_steps=args.logging_steps,
         save_steps=args.save_steps,
@@ -135,10 +135,21 @@ def main():
         gradient_checkpointing=True,
     )
 
+    def formatting_func(examples):
+        """Format messages using tokenizer's chat template."""
+        texts = []
+        for msgs in examples["messages"]:
+            text = tokenizer.apply_chat_template(
+                msgs, tokenize=False, add_generation_prompt=False
+            )
+            texts.append(text)
+        return texts
+
     trainer = SFTTrainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
+        formatting_func=formatting_func,
         processing_class=tokenizer,
     )
 
