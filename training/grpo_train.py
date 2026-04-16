@@ -28,8 +28,10 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Unsloth must be imported before TRL
+import unsloth  # noqa: F401
+
 # Disable TRL's vLLM backend — Qwen3.5 hybrid arch causes compilation errors
-# This forces TRL to use HuggingFace native generation instead
 import importlib
 _trl_utils = importlib.import_module("trl.import_utils")
 _trl_utils.is_vllm_available = lambda: False
