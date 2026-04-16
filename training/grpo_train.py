@@ -112,9 +112,11 @@ def main():
     parser.add_argument("--save-steps", type=int, default=50)
     parser.add_argument("--max-samples", type=int, default=999)
     parser.add_argument("--use-vllm", action="store_true", default=False,
-                        help="Use vLLM for fast generation (colocate mode)")
+                        help="Use vLLM for fast generation")
+    parser.add_argument("--vllm-server-url", type=str, default=None,
+                        help="External vLLM server URL (e.g. http://localhost:8000/v1). If set, uses server mode.")
     parser.add_argument("--vllm-gpu-util", type=float, default=0.3,
-                        help="GPU memory fraction for vLLM (rest for training)")
+                        help="GPU memory fraction for vLLM colocate mode")
     args = parser.parse_args()
 
     print(f"Model: {args.model_name}")
@@ -224,9 +226,10 @@ def main():
         max_completion_length=args.max_completion_len,
         generation_kwargs={"temperature": args.temperature, "do_sample": True},
         # vLLM acceleration
-        use_vllm=args.use_vllm,
+        use_vllm=args.use_vllm or bool(args.vllm_server_url),
+        vllm_mode="server" if args.vllm_server_url else "colocate",
+        vllm_server_base_url=args.vllm_server_url,
         vllm_gpu_memory_utilization=args.vllm_gpu_util,
-        vllm_max_model_length=args.max_prompt_len + args.max_completion_len,
     )
 
     trainer = GRPOTrainer(
