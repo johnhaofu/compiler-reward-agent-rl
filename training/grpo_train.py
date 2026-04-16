@@ -111,6 +111,10 @@ def main():
     parser.add_argument("--logging-steps", type=int, default=5)
     parser.add_argument("--save-steps", type=int, default=50)
     parser.add_argument("--max-samples", type=int, default=999)
+    parser.add_argument("--use-vllm", action="store_true", default=False,
+                        help="Use vLLM for fast generation (colocate mode)")
+    parser.add_argument("--vllm-gpu-util", type=float, default=0.3,
+                        help="GPU memory fraction for vLLM (rest for training)")
     args = parser.parse_args()
 
     print(f"Model: {args.model_name}")
@@ -219,6 +223,10 @@ def main():
         num_generations=args.num_generations,
         max_completion_length=args.max_completion_len,
         generation_kwargs={"temperature": args.temperature, "do_sample": True},
+        # vLLM acceleration
+        use_vllm=args.use_vllm,
+        vllm_gpu_memory_utilization=args.vllm_gpu_util,
+        vllm_max_model_length=args.max_prompt_len + args.max_completion_len,
     )
 
     trainer = GRPOTrainer(
