@@ -1,0 +1,169 @@
+tools:
+  - class_name: verl_tools.horizon_tool.HorizonTool
+    config:
+      horizon_path: /root/autodl-tmp/horizon
+      schemas_dir: data/schemas
+      components_path: data/horizon_components.json
+    tool_schema:
+      type: function
+      function:
+        name: list_files
+        description: "List files in a directory within the Horizon theme."
+        parameters:
+          type: object
+          properties:
+            path:
+              type: string
+              description: "Relative path within the theme. Examples: 'sections/', 'blocks/', 'templates/'"
+          required:
+            - path
+
+  - class_name: verl_tools.horizon_tool.HorizonTool
+    config:
+      horizon_path: /root/autodl-tmp/horizon
+    tool_schema:
+      type: function
+      function:
+        name: read_file
+        description: "Read the contents of a file in the Horizon theme."
+        parameters:
+          type: object
+          properties:
+            path:
+              type: string
+              description: "Relative path to the file."
+          required:
+            - path
+
+  - class_name: verl_tools.horizon_tool.HorizonTool
+    config:
+      horizon_path: /root/autodl-tmp/horizon
+    tool_schema:
+      type: function
+      function:
+        name: grep
+        description: "Search for a pattern across files. Supports regex."
+        parameters:
+          type: object
+          properties:
+            pattern:
+              type: string
+              description: "Search pattern (string or regex)"
+            path:
+              type: string
+              description: "File or directory path to search in"
+          required:
+            - pattern
+
+  - class_name: verl_tools.horizon_tool.HorizonTool
+    config:
+      horizon_path: /root/autodl-tmp/horizon
+    tool_schema:
+      type: function
+      function:
+        name: write_file
+        description: "Create or update a file in the workspace."
+        parameters:
+          type: object
+          properties:
+            path:
+              type: string
+              description: "Relative path for the file"
+            content:
+              type: string
+              description: "File content to write"
+          required:
+            - path
+            - content
+
+  - class_name: verl_tools.horizon_tool.HorizonTool
+    config:
+      horizon_path: /root/autodl-tmp/horizon
+    tool_schema:
+      type: function
+      function:
+        name: edit_json
+        description: "Apply JSON Patch operations (RFC 6902) to an existing JSON file."
+        parameters:
+          type: object
+          properties:
+            path:
+              type: string
+              description: "Path to the JSON file"
+            operations:
+              type: array
+              description: "RFC 6902 JSON Patch operations"
+              items:
+                type: object
+          required:
+            - path
+            - operations
+
+  - class_name: verl_tools.horizon_tool.HorizonTool
+    config:
+      horizon_path: /root/autodl-tmp/horizon
+    tool_schema:
+      type: function
+      function:
+        name: list_components
+        description: "Get all available section and block types with descriptions."
+        parameters:
+          type: object
+          properties: {}
+
+  - class_name: verl_tools.horizon_tool.HorizonTool
+    config:
+      horizon_path: /root/autodl-tmp/horizon
+    tool_schema:
+      type: function
+      function:
+        name: get_section_schema
+        description: "Get detailed schema for a specific section type."
+        parameters:
+          type: object
+          properties:
+            section_name:
+              type: string
+              description: "Section type name"
+          required:
+            - section_name
+
+  - class_name: verl_tools.horizon_tool.HorizonTool
+    config:
+      horizon_path: /root/autodl-tmp/horizon
+    tool_schema:
+      type: function
+      function:
+        name: validate
+        description: "Check files against Shopify theme validation API."
+        parameters:
+          type: object
+          properties:
+            files:
+              type: array
+              items:
+                type: string
+              description: "List of file paths to validate"
+          required:
+            - files
+
+  - class_name: verl_tools.horizon_tool.HorizonTool
+    config:
+      horizon_path: /root/autodl-tmp/horizon
+    tool_schema:
+      type: function
+      function:
+        name: done
+        description: "Signal task completion."
+        parameters:
+          type: object
+          properties:
+            status:
+              type: string
+              description: "success or error"
+            summary:
+              type: string
+              description: "Summary of what was done"
+          required:
+            - status
+            - summary
