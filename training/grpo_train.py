@@ -214,9 +214,8 @@ def main():
         gradient_checkpointing=True,
         # GRPO specific
         num_generations=args.num_generations,
-        temperature=args.temperature,
-        max_prompt_length=args.max_prompt_len,
         max_completion_length=args.max_completion_len,
+        generation_kwargs={"temperature": args.temperature, "do_sample": True},
     )
 
     trainer = GRPOTrainer(
