@@ -182,15 +182,18 @@ def main():
 
         rewards = []
         for text, tpl_type in zip(texts, tpl_types):
-            result = env.validate(tpl_type, text)
-            if args.reward_type == "outcome":
-                rewards.append(1.0 if result.all_passed else 0.0)
-            else:
-                rd = result.to_reward_dict()
-                score = (rd["json_valid"] + rd["sections_valid"] + rd["theme_check_valid"]) / 3.0
-                if result.all_passed:
-                    score = 1.0
-                rewards.append(score)
+            try:
+                result = env.validate(tpl_type, text)
+                if args.reward_type == "outcome":
+                    rewards.append(1.0 if result.all_passed else 0.0)
+                else:
+                    rd = result.to_reward_dict()
+                    score = (rd["json_valid"] + rd["sections_valid"] + rd["theme_check_valid"]) / 3.0
+                    if result.all_passed:
+                        score = 1.0
+                    rewards.append(score)
+            except Exception:
+                rewards.append(0.0)
         return rewards
 
     # ── GRPO Training ──

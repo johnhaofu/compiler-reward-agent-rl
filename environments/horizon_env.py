@@ -157,6 +157,8 @@ class HorizonEnvironment:
     def _check_references(self, data: dict) -> tuple[bool, str]:
         """Check that all referenced sections and block types exist in Horizon."""
         sections = data.get("sections", {})
+        if not isinstance(sections, dict):
+            return False, f"'sections' must be an object, got {type(sections).__name__}"
 
         for section_key, section_data in sections.items():
             if not isinstance(section_data, dict):
