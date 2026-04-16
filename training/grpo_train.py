@@ -30,8 +30,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Disable TRL's vLLM backend — Qwen3.5 hybrid arch causes compilation errors
 # This forces TRL to use HuggingFace native generation instead
-import trl.import_utils
-trl.import_utils.is_vllm_available = lambda: False
+import importlib
+_trl_utils = importlib.import_module("trl.import_utils")
+_trl_utils.is_vllm_available = lambda: False
 
 
 def load_prompts(data_path: str, system_prompt: str) -> list[dict]:
