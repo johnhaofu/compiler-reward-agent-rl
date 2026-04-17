@@ -136,7 +136,6 @@ $VENV/bin/python -m verl.trainer.main_ppo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    +actor_rollout_ref.actor.fsdp_config.wrap_policy.transformer_layer_cls_to_wrap=Qwen3_5DecoderLayer \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
@@ -148,7 +147,6 @@ $VENV/bin/python -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.multi_turn.format=chatml \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
-    +actor_rollout_ref.ref.fsdp_config.wrap_policy.transformer_layer_cls_to_wrap=Qwen3_5DecoderLayer \
     algorithm.use_kl_in_reward=False \
     env.env_name=horizon \
     env.seed=42 \
