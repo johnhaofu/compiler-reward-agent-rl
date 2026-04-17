@@ -1,189 +1,53 @@
 """
 Horizon Theme Environment for verl-agent.
 
-Gym-style multi-turn environment for Shopify Horizon template generation.
-Each step: model outputs a tool call → env executes → returns observation.
+Stub env_manager — actual tool execution is handled by HorizonTool (BaseTool).
+This env only:
+1. Provides initial task prompt at reset()
+2. Returns final reward when SGLang rollout finishes
+
+Multi-turn rollout flow (verl-agent + SGLang + BaseTool):
+  reset()   → task prompt
+  SGLang internally handles tool calls via HorizonTool.execute()
+  When agent calls "done": episode ends, reward = HorizonTool.calc_reward()
 """
 
-import json
-import concurrent.futures
 import asyncio
-from typing import Any, Dict, List
-from copy import deepcopy
-from pathlib import Path
+import concurrent.futures
+from typing import Dict, List, Optional
 
 import gym
-import numpy as np
 from omegaconf import DictConfig
-
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-
-from environments.tools import AgentWorkspace, TOOLS
-
-
-# Tool descriptions for the model prompt
-TOOL_DESCRIPTIONS = "\n".join(
-    f"- {t['function']['name']}: {t['function']['description']}"
-    for t in TOOLS
-)
 
 
 class HorizonSingleEnv:
-    """Single Horizon theme environment instance."""
+    """Single Horizon task — provides prompt, computes final reward."""
 
-    def __init__(self, horizon_path: str, schemas_dir: str = "data/schemas",
-                 components_path: str = "data/horizon_components.json"):
-        self.horizon_path = horizon_path
-        self.schemas_dir = schemas_dir
-        self.components_path = components_path
-        self.workspace = None
-        self.turn = 0
-        self.max_turns = 50
+    def __init__(self):
+        self.task = None
         self.done = False
 
     def reset(self, extras: dict):
-        """Reset environment with a new task."""
-        self.workspace = AgentWorkspace(
-            horizon_path=self.horizon_path,
-            components_path=self.components_path,
-            schemas_dir=self.schemas_dir,
-        )
-        self.turn = 0
-        self.max_turns = extras.get("max_turns", 50)
+        """Store task description."""
+        self.task = extras.get("question", "")
         self.done = False
 
     def step(self, action: str) -> dict:
-        """Execute a tool call action.
+        """No-op step (real work done by SGLang+BaseTool).
 
-        Args:
-            action: Model-generated text containing a tool call.
-                    Expected format: <tool_call><function=name><parameter=key>value</parameter></function></tool_call>
-                    Or JSON: {"name": "tool_name", "arguments": {...}}
-
-        Returns:
-            dict with keys: observations, reward, done, metadata
+        Called only if multi_turn rollout is disabled.
+        With multi_turn enabled, SGLang handles the rollout end-to-end.
         """
-        if self.done or self.turn >= self.max_turns:
-            return {
-                "observations": "Episode already ended.",
-                "reward": 0.0,
-                "done": True,
-                "metadata": {"won": False},
-            }
-
-        # Parse tool call from model output
-        tool_name, arguments = self._parse_action(action)
-
-        if tool_name is None:
-            self.turn += 1
-            return {
-                "observations": "Invalid action format. Use a tool call.",
-                "reward": 0.0,
-                "done": self.turn >= self.max_turns,
-                "metadata": {"won": False, "is_action_valid": False},
-            }
-
-        # Execute tool
-        result = self.workspace.execute_tool(
-            turn=self.turn,
-            tool_name=tool_name,
-            arguments=arguments,
-        )
-        self.turn += 1
-
-        # Check if done
-        is_done = self.workspace.is_done or self.turn >= self.max_turns
-
-        # Compute reward (only at end of episode)
-        reward = 0.0
-        won = False
-        if is_done:
-            metrics = self.workspace.get_metrics()
-            if metrics["resolved"]:
-                reward = 1.0
-                won = True
-            elif metrics["first_try_valid"]:
-                reward = 0.5
-            self.done = True
-            self.workspace.cleanup()
-
+        self.done = True
         return {
-            "observations": result,
-            "reward": reward,
-            "done": is_done,
-            "metadata": {
-                "won": won,
-                "tool_name": tool_name,
-                "turn": self.turn,
-                "is_action_valid": True,
-            },
+            "observations": "",
+            "reward": 0.0,
+            "done": True,
+            "metadata": {"won": False},
         }
 
-    def _parse_action(self, text: str):
-        """Parse tool call from model output.
-
-        Supports two formats:
-        1. Qwen3.5 format: <tool_call><function=name><parameter=key>value</parameter></function></tool_call>
-        2. JSON format: {"name": "tool_name", "arguments": {...}}
-        """
-        text = text.strip()
-
-        # Try Qwen3.5 <tool_call> format
-        if "<tool_call>" in text:
-            return self._parse_qwen_tool_call(text)
-
-        # Try JSON format
-        try:
-            data = json.loads(text)
-            if isinstance(data, dict) and "name" in data:
-                return data["name"], data.get("arguments", {})
-        except (json.JSONDecodeError, KeyError):
-            pass
-
-        # Try to find function call pattern in text
-        for tool in TOOLS:
-            name = tool["function"]["name"]
-            if name + "(" in text or f'"{name}"' in text:
-                # Try to extract arguments
-                try:
-                    start = text.index("{")
-                    end = text.rindex("}") + 1
-                    args = json.loads(text[start:end])
-                    return name, args
-                except (ValueError, json.JSONDecodeError):
-                    return name, {}
-
-        return None, {}
-
-    def _parse_qwen_tool_call(self, text: str):
-        """Parse Qwen3.5 tool call format."""
-        import re
-
-        # Extract function name
-        func_match = re.search(r"<function=([^>]+)>", text)
-        if not func_match:
-            return None, {}
-        func_name = func_match.group(1)
-
-        # Extract parameters
-        args = {}
-        param_pattern = re.findall(
-            r"<parameter=([^>]+)>(.*?)</parameter>", text, re.DOTALL
-        )
-        for param_name, param_value in param_pattern:
-            param_value = param_value.strip()
-            # Try parsing as JSON value
-            try:
-                args[param_name] = json.loads(param_value)
-            except (json.JSONDecodeError, ValueError):
-                args[param_name] = param_value
-
-        return func_name, args
-
     def close(self):
-        if self.workspace:
-            self.workspace.cleanup()
+        pass
 
 
 class HorizonMultiProcessEnv(gym.Env):
@@ -195,7 +59,7 @@ class HorizonMultiProcessEnv(gym.Env):
         env_num: int = 1,
         group_n: int = 1,
         is_train: bool = True,
-        env_config: DictConfig = None,
+        env_config: Optional[DictConfig] = None,
     ):
         super().__init__()
 
@@ -203,20 +67,9 @@ class HorizonMultiProcessEnv(gym.Env):
         self.group_n = group_n
         self.batch_size = env_num * group_n
         self.is_train = is_train
-        self.max_steps = env_config.max_steps
+        self.max_steps = env_config.max_steps if env_config else 50
 
-        horizon_path = env_config.get("horizon_path", "/root/autodl-tmp/horizon")
-        schemas_dir = env_config.get("schemas_dir", "data/schemas")
-        components_path = env_config.get("components_path", "data/horizon_components.json")
-
-        self.envs = [
-            HorizonSingleEnv(
-                horizon_path=horizon_path,
-                schemas_dir=schemas_dir,
-                components_path=components_path,
-            )
-            for _ in range(self.batch_size)
-        ]
+        self.envs = [HorizonSingleEnv() for _ in range(self.batch_size)]
 
         max_workers = min(self.batch_size, 32)
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
@@ -225,31 +78,26 @@ class HorizonMultiProcessEnv(gym.Env):
     def _sync_reset(self, env, kwargs):
         extras = {
             "max_turns": self.max_steps,
+            "question": kwargs.get("question", kwargs.get("prompt", "")),
             "ground_truth": kwargs.get("ground_truth", ""),
         }
         env.reset(extras)
-        obs = kwargs.get("question", kwargs.get("prompt", ""))
         info = {"data_source": kwargs.get("data_source", "horizon")}
-        return obs, info
+        return extras["question"], info
 
     def _sync_step(self, env, action: str):
         out = env.step(action)
-        obs = out["observations"]
-        reward = out["reward"]
-        done = out["done"]
-        info = dict(out.get("metadata", {}))
-        info["won"] = bool(done and reward >= 1.0)
-        return obs, reward, done, info
+        return out["observations"], out["reward"], out["done"], dict(out.get("metadata", {}))
 
     def reset(self, kwargs: List[Dict]):
         pad_n = self.batch_size - len(kwargs)
         dummy_kw = {"question": "", "ground_truth": "", "data_source": "dummy"}
-        padded_kwargs = list(kwargs) + [dummy_kw] * pad_n
+        padded = list(kwargs) + [dummy_kw] * pad_n
         valid_mask = [True] * len(kwargs) + [False] * pad_n
 
         tasks = [
             self._loop.run_in_executor(self._executor, self._sync_reset, env, kw)
-            for env, kw in zip(self.envs, padded_kwargs)
+            for env, kw in zip(self.envs, padded)
         ]
         results = self._loop.run_until_complete(asyncio.gather(*tasks))
 
@@ -260,12 +108,12 @@ class HorizonMultiProcessEnv(gym.Env):
 
     def step(self, actions: List[str]):
         pad_n = self.batch_size - len(actions)
-        padded_actions = list(actions) + [""] * pad_n
+        padded = list(actions) + [""] * pad_n
         valid_mask = [True] * len(actions) + [False] * pad_n
 
         tasks = [
             self._loop.run_in_executor(self._executor, self._sync_step, env, act)
-            for env, act in zip(self.envs, padded_actions)
+            for env, act in zip(self.envs, padded)
         ]
         results = self._loop.run_until_complete(asyncio.gather(*tasks))
 
@@ -284,13 +132,7 @@ class HorizonMultiProcessEnv(gym.Env):
         self._loop.close()
 
 
-def build_horizon_envs(
-    seed: int = 0,
-    env_num: int = 1,
-    group_n: int = 1,
-    is_train: bool = True,
-    env_config=None,
-):
+def build_horizon_envs(seed=0, env_num=1, group_n=1, is_train=True, env_config=None):
     return HorizonMultiProcessEnv(
         seed=seed, env_num=env_num, group_n=group_n,
         is_train=is_train, env_config=env_config,
