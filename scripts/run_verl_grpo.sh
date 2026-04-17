@@ -20,6 +20,8 @@ export TMPDIR=/root/autodl-tmp/tmp
 export UV_CACHE_DIR=/root/autodl-tmp/uv-cache
 export PYTHONPATH=/root/autodl-tmp/compiler-reward-agent-rl:/root/autodl-tmp/verl-agent:$PYTHONPATH
 export HORIZON_PATH=/root/autodl-tmp/horizon
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
 
 ALGO=${1:-grpo}                  # grpo | gspo | gigpo
 GROUP_SIZE=${2:-4}               # generations per prompt for GRPO
@@ -125,7 +127,7 @@ $VENV/bin/python -m verl.trainer.main_ppo \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
     data.return_raw_chat=True \
-    actor_rollout_ref.model.path=/root/autodl-tmp/models/Qwen3-4B \
+    actor_rollout_ref.model.path=/root/autodl-tmp/models/Qwen3-4B-Instruct-2507 \
     actor_rollout_ref.actor.optim.lr=5e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=$TRAIN_SIZE \
