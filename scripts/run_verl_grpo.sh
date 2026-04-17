@@ -23,9 +23,9 @@ export HORIZON_PATH=/root/autodl-tmp/horizon
 
 ALGO=${1:-grpo}                  # grpo | gspo | gigpo
 GROUP_SIZE=${2:-4}               # generations per prompt for GRPO
-N_GPUS=3
-TRAIN_SIZE=48                    # divisible by N_GPUS=3 (16 per GPU)
-VAL_SIZE=24                      # divisible by N_GPUS=3 (8 per GPU)
+N_GPUS=${N_GPUS:-3}              # can override via env var
+TRAIN_SIZE=${TRAIN_SIZE:-48}     # must be divisible by N_GPUS
+VAL_SIZE=${VAL_SIZE:-24}         # must be divisible by N_GPUS
 
 cd /root/autodl-tmp/compiler-reward-agent-rl
 git pull
