@@ -111,7 +111,7 @@ pgrep -f main_ppo 2>/dev/null | xargs -r kill -9 2>/dev/null || true
 pgrep -f sglang 2>/dev/null | xargs -r kill -9 2>/dev/null || true
 sleep 5
 
-EXPNAME="${ALGO}_qwen3.5_horizon_multiturn"
+EXPNAME="${ALGO}_qwen3_horizon_multiturn"
 
 echo "=== verl-agent ${ALGO^^} + SGLang multi-turn (3 GPU) ==="
 $VENV/bin/python -m verl.trainer.main_ppo \
@@ -125,7 +125,7 @@ $VENV/bin/python -m verl.trainer.main_ppo \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
     data.return_raw_chat=True \
-    actor_rollout_ref.model.path=/root/autodl-tmp/models/Qwen3.5-4B \
+    actor_rollout_ref.model.path=/root/autodl-tmp/models/Qwen3-4B \
     actor_rollout_ref.actor.optim.lr=5e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=$TRAIN_SIZE \
