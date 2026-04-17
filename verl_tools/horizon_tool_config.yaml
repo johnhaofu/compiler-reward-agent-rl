@@ -110,6 +110,7 @@ tools:
         parameters:
           type: object
           properties: {}
+          required: []
 
   - class_name: verl_tools.horizon_tool.HorizonTool
     config:
