@@ -14,3 +14,17 @@ checkpoints/
 *.bin
 .ipynb_checkpoints/
 data/horizon/
+
+# LaTeX intermediate
+paper/*.aux
+paper/*.out
+paper/*.log
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.synctex.gz
+paper/*.bbl
+paper/*.blg
+paper/*.toc
+# anonymous-review version & internal submission notes (kept local)
+paper/draft_anon.*
+paper/SUBMISSION_READY.md

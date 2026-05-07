@@ -2,6 +2,8 @@
 
 Using compiler/linter feedback as process reward signals for training coding agents via reinforcement learning.
 
+📄 **Paper**: [Compiler-as-Reward: Process Feedback for Coding Agent RL Training](paper/draft.pdf) (Junhao Fu, 2025)
+
 ## Key Idea
 
 Compilers provide **free, deterministic, line-level** feedback — a natural reward signal that has been overlooked in Agent RL research. We systematically study how to leverage this signal for training coding agents on real-world Shopify Liquid template generation.
