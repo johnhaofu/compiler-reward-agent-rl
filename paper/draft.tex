@@ -46,7 +46,7 @@
 
 % ============================================================
 \title{\textbf{Compiler-as-Reward: Operating-Regime Conditions for\\
-RL Post-Training on Coding Agents}}
+Agentic RL on Verifiable Coding Tasks}}
 
 \author{
   Junhao Fu \\
@@ -64,22 +64,29 @@ RL Post-Training on Coding Agents}}
 \begin{abstract}
 A common assumption in multi-turn coding-agent RL is that sparse pass/fail rewards
 are the bottleneck and must be densified through hand-designed process rewards.
-We test this on a Shopify Horizon theme-generation task with a deterministic
-compiler-API reward, and find the opposite: \textbf{the bottleneck is the operating
-regime, not the reward shape}. A 4B base model has a 7.8\% compile-pass rate from
-free-form prompting; a single in-context schema example lifts the base to 73.4\%
-\emph{before any RL training}. In this regime, plain GiGPO~\cite{zeng2025gigpo}
-with binary outcome reward improves a held-out OOD task set by +9pp (40.9\%
-$\to$ 50.0\%); on in-distribution validation it reaches 78\%. We then test two
-process-reward variants. Compiler-OPD (per-step credit on validate calls) is
-analyzed but not run, owing to a Goodhart-style failure mode that requires a
-hand-tuned cap. Best-Trajectory Distillation~\cite{lambert2025tulu3}
-(SFT-on-winners mixed with the policy-gradient loss) is run end-to-end and
-\emph{underperforms the binary baseline by 22.7pp on OOD}, recovering training
-distribution but discarding generalization. We argue that for verifiable coding
-tasks, energy is better spent ensuring base success rate is non-negligible
+We test this on a Shopify Horizon theme-generation task—an \emph{agentic RL}
+setting~\cite{cursor2025composer2,kimi2025k2} with tool use, multi-turn
+interaction, and a deterministic compiler-API reward—and find the opposite:
+\textbf{the bottleneck is the operating regime, not the reward shape}. A 4B
+base model has a 7.8\% compile-pass rate from free-form prompting; a single
+in-context schema example lifts the base to 73.4\% \emph{before any RL
+training}. In this regime, plain GiGPO~\cite{zeng2025gigpo} with binary outcome
+reward improves a held-out OOD task set by +9pp (40.9\% $\to$ 50.0\%); on
+in-distribution validation it reaches 78\%. We then test three process-reward
+variants. Compiler-OPD (per-step credit on validate calls) is analyzed but not
+run, owing to a Goodhart-style failure mode that requires a hand-tuned cap.
+Best-Trajectory Distillation~\cite{lambert2025tulu3} (SFT-on-winners mixed
+with the policy-gradient loss) is run end-to-end and \emph{underperforms the
+binary baseline by 22.7pp on OOD}, recovering training distribution but
+discarding generalization. Cursor-style auxiliary product
+penalties~\cite{cursor2025composer2} (penalize empty sections / unused tool
+calls / repeated submits) destabilize the run on our small-batch (64
+episodes/step) setting and fail to exceed the binary baseline on in-loop
+validation. We argue that for verifiable coding tasks at compute-constrained
+scale, energy is better spent ensuring base success rate is non-negligible
 (via priming or warm-starting) than on hand-designed step rewards. Concurrent
-work~\cite{ramp2026fastask} reaches the same conclusion on spreadsheet retrieval.
+work~\cite{ramp2026fastask,hu2025orz} reaches the same conclusion on
+spreadsheet retrieval and on pure-RL math reasoning, respectively.
 \end{abstract}
 
 % ============================================================
@@ -115,11 +122,17 @@ auxiliary loss---fail to improve on this baseline and damage out-of-distribution
 generalization.
 
 \textbf{Contributions.}
-(1) An empirical decomposition of where RL gains come from on this task:
-operating-regime priming dominates RL training (+65.6pp vs +6.4pp).
-(2) A clean ablation showing that a Best-Trajectory Distillation auxiliary
-loss \emph{hurts} OOD generalization in this setting (\(-22.7\)pp on a
-held-out modify/add/create task set).
+(1) An empirical decomposition of where RL gains come from on this
+\emph{agentic} task: operating-regime priming dominates RL training
+(+65.6pp vs +6.4pp).
+(2) Two clean negative ablations on this regime:
+(a) Best-Trajectory Distillation auxiliary loss \emph{hurts} OOD
+generalization (\(-22.7\)pp on a held-out modify/add/create task set);
+(b) Cursor Composer 2-style product
+penalties~\cite{cursor2025composer2}---ported as the closest agentic-RL
+analogue---fail to exceed the binary baseline on in-loop validation
+and exhibit volatile training dynamics in our 64-episode-per-step
+regime.
 (3) An open Sitemuse-API-grounded benchmark with deterministic reward,
 suitable for further verifiable-RL studies.
 
@@ -215,6 +228,37 @@ training-distribution patterns on the small 423-prompt training set,
 losing OOD generalization. Final \texttt{eval\_fixed} dropped from
 $50.0\%$ (v1) to $27.3\%$ (v2-distill), $-22.7$pp.
 
+\textbf{Cursor-style product penalties (variant v3-shaped, run end-to-end).}
+Composer 2~\cite{cursor2025composer2} introduces ``product-specific
+penalties for poor tool calls---e.g.\ creating to-do list items and
+then leaving them unfinished''---as an auxiliary reward beyond
+correctness. We port this idea to our setting as four
+content-aware penalties applied at compile-pass terminals only:
+$-0.05$ per declared section with empty \texttt{settings} \emph{and}
+\texttt{blocks} (the empty-shell hack the agent learns under
+content-blind compile reward), $-0.03$ per \texttt{describe\_X}
+without \texttt{X} appearing in the submitted JSON, $+0.04$ per
+\texttt{describe\_X} used, $-0.10$ for a \texttt{submit} whose JSON
+equals the previous \texttt{fix} (theatrical iteration).
+The reward range expands from $\{0, 1.0\}$ to approximately
+$[0.45, 1.15]$ on compile-pass outputs, intended to give GRPO
+within-group advantage variance even on the bimodal batches we
+observe in v1. In-loop validation (32-prompt fixed prefix) over the
+first 40 training steps gives $\{73.4, 71.9, 57.8, 71.9, 71.9\}$ at
+steps $\{0, 10, 20, 30, 40\}$: stagnant at the base rate, with a deep
+dip at step 20. By contrast, the simultaneous \emph{pure-binary} run
+(``v1-replica'') reached 81.2\% at step 30 in-loop. The shaped reward
+appears to disrupt GRPO's group normalization at our 64-episode batch
+size---each shaped reward value is a small perturbation, but when the
+group's underlying outcome distribution is already bimodal (\S
+\ref{sec:trajectories}, $\mathrm{decidable\_fraction}=0$ persistently),
+the spread we introduce inside groups becomes the dominant source of
+advantage variance and is not directionally aligned with the terminal
+objective. This is consistent with
+Open-Reasoner-Zero's~\cite{hu2025orz} finding that minimalist
+rule-based rewards outperform hand-designed shaping in compute-
+constrained settings.
+
 % ============================================================
 \section{Experiments}
 \label{sec:exp}
@@ -269,6 +313,7 @@ Most of the absolute capability gain on this task is operating-regime,
 not learning.
 
 \subsection{Training Trajectories}
+\label{sec:trajectories}
 
 \begin{figure}[t]
 \centering
@@ -305,13 +350,33 @@ classic ``train up, val down, then both crash'' signature.}
 \section{Related Work}
 \label{sec:related}
 
+\textbf{Agentic RL vs.\ reasoning RL.} Recent open RL post-training
+divides cleanly. \emph{Reasoning RL} (DeepSeek-R1~\cite{deepseek2025r1},
+MiMo-7B~\cite{xiaomi2025mimo}, Open-Reasoner-Zero~\cite{hu2025orz})
+trains single-turn solvers on verifiable math/code, with a 1.0 reward
+gated by a checker (Math-Verify, test cases). \emph{Agentic RL}
+(Cursor Composer 2~\cite{cursor2025composer2}, Kimi K2~\cite{kimi2025k2},
+MiniMax-M1~\cite{minimax2025m1}, DeepSeek-V3.2~\cite{deepseek2025v32})
+adds multi-turn tool use, environment-state changes, and---in the
+Composer 2 case---auxiliary product penalties shaping
+non-correctness behaviors. Our setting falls cleanly in the agentic
+column: five tools (\texttt{list/describe/fix/submit}), 6-turn budget,
+sparse terminal reward from the Sitemuse compiler. The negative
+v3-shaped result (\S3.3) reports that the Composer 2 penalty recipe
+does not naively transfer to our 4B-model / 64-episode-batch scale.
+
 \textbf{Group-based agentic RL.} GiGPO~\cite{zeng2025gigpo} extends
 GRPO~\cite{shao2024grpo} to multi-turn agents via anchor-state group
-baselines. HGPO~\cite{feng2026hgpo} and SPEAR~\cite{spear2026} explore
-hierarchical groups and self-imitation respectively. Our v1 uses GiGPO
-unmodified; we observe no reward hacking under binary outcome reward in
-the primed regime, contrary to predictions in the
-process-reward literature that motivate auxiliary mechanisms.
+baselines. The mechanism assumes states recur across rollouts
+(documented on ALFWorld and WebShop). On our task the state is a
+JSON-parameterized Sitemuse validator response, which essentially
+never recurs across rollouts; in practice the inner step-level group
+collapses to size-1 clusters past step 2. HGPO~\cite{feng2026hgpo} and
+SPEAR~\cite{spear2026} explore hierarchical groups and self-imitation
+respectively. Our v1 uses GiGPO unmodified; we observe no reward
+hacking under binary outcome reward in the primed regime, contrary to
+predictions in the process-reward literature that motivate auxiliary
+mechanisms.
 
 \textbf{Process rewards in RL.} Math-Shepherd~\cite{wang2024mathshepherd}
 introduces process reward models that score intermediate steps; PRMs
@@ -361,6 +426,33 @@ a templated synthesizer with no decoy sections or ambiguous identifiers.
 Adversarial workbook construction~\cite{ramp2026fastask} would
 likely improve OOD robustness and is the most direct fix for
 v2-distill's distribution-overfit failure mode.
+
+\textbf{Dynamic sampling and Clip-Higher (deferred).} MiMo-7B's RL
+recipe~\cite{xiaomi2025mimo} on the same verl framework we use applies
+three modifications that should help our setting: (i)~DAPO
+\emph{dynamic sampling}~\cite{yu2025dapo}, which over-samples and
+filters out groups with passrate $\in \{0, 1\}$ so every group in the
+batch contributes nonzero gradient; (ii)~\emph{Clip-Higher}, raising
+the upper PPO clip bound to mitigate entropy collapse; and
+(iii)~\emph{easy-data resampling} (10\% probability), which preserves
+already-solved prompts in the rollout pool to stabilize late training.
+In our run, $\mathrm{decidable\_fraction}=0$ persisted across all
+40+ steps (batches were bimodal between all-pass and all-fail
+groups), which is exactly the condition dynamic sampling resolves.
+These three changes are one-line config edits in verl and are the
+most direct next intervention to try; we did not include them in this
+study to preserve the v1 / v2-distill / v3-shaped comparison's
+otherwise-identical hyperparameter setting.
+
+\textbf{Demonstration quality.} The few-shot example used to lift
+base success from 7.8\% to 73.4\% (\S\ref{sec:method}) is itself a
+minimal compile-pass shell with empty \texttt{settings} and
+\texttt{blocks}. The agent learns to imitate this shape---a hack the
+v3-shaped penalties were intended to suppress. Phi-4-reasoning's
+strategy~\cite{phi4reasoning} of using a stronger teacher
+(\emph{o3-mini}) to regenerate ``teachable'' demonstrations would
+likely lift base further while making the empty-shell hack
+non-optimal, simultaneously fixing v3-shaped's underlying motivation.
 
 % ============================================================
 \section{Conclusion}
@@ -450,6 +542,56 @@ Carlos E.\ Jimenez, John Yang, Alexander Wettig, Shunyu Yao, Kexin Pei,
   Ofir Press, and Karthik Narasimhan.
 \newblock SWE-bench: Can Language Models Resolve Real-World GitHub Issues?
 \newblock In \emph{ICLR}, 2024.
+
+\bibitem{cursor2025composer2}
+Cursor Research Team.
+\newblock Composer 2 Technical Report.
+\newblock 2025.
+\newblock \url{https://cursor.com/resources/Composer2.pdf}
+
+\bibitem{kimi2025k2}
+Kimi Team.
+\newblock Kimi K2: Open Agentic Intelligence.
+\newblock \emph{arXiv:2507.20534}, 2025.
+
+\bibitem{minimax2025m1}
+MiniMax-AI.
+\newblock MiniMax-M1: Scaling Test-Time Compute Efficiently with Lightning
+  Attention.
+\newblock \emph{arXiv:2506.13585}, 2025.
+
+\bibitem{deepseek2025v32}
+DeepSeek-AI.
+\newblock DeepSeek-V3.2: Pushing the Frontier of Open Large Language Models.
+\newblock \emph{arXiv:2512.02556}, 2025.
+
+\bibitem{deepseek2025r1}
+DeepSeek-AI.
+\newblock DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via
+  Reinforcement Learning.
+\newblock \emph{arXiv:2501.12948}, 2025.
+
+\bibitem{xiaomi2025mimo}
+Xiaomi LLM-Core Team.
+\newblock MiMo: Unlocking the Reasoning Potential of Language
+  Model---From Pretraining to Posttraining.
+\newblock \emph{arXiv:2505.07608}, 2025.
+
+\bibitem{hu2025orz}
+Jingcheng Hu et al.
+\newblock Open-Reasoner-Zero: An Open Source Approach to Scaling Up RL on
+  the Base Model.
+\newblock \emph{arXiv:2503.24290}, 2025.
+
+\bibitem{yu2025dapo}
+Qiying Yu et al.
+\newblock DAPO: An Open-Source LLM Reinforcement Learning System at Scale.
+\newblock \emph{arXiv:2503.14476}, 2025.
+
+\bibitem{phi4reasoning}
+Microsoft.
+\newblock Phi-4-reasoning Technical Report.
+\newblock \emph{arXiv:2504.21318}, 2025.
 
 \end{thebibliography}
 

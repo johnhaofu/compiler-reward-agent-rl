@@ -1,14 +1,16 @@
-# Compiler-as-Reward: Operating-Regime Conditions for RL on Coding Agents
+# Compiler-as-Reward: Operating-Regime Conditions for Agentic RL on Verifiable Coding Tasks
 
 Using compiler/validator feedback as a deterministic, annotation-free reward signal for RL post-training of multi-turn coding agents.
 
-📄 **Paper**: [Compiler-as-Reward: Operating-Regime Conditions for RL Post-Training on Coding Agents](paper/draft.pdf) (Junhao Fu, 2026)
+📄 **Paper**: [Compiler-as-Reward: Operating-Regime Conditions for Agentic RL on Verifiable Coding Tasks](paper/draft.pdf) (Junhao Fu, 2026)
 
 ## Key Idea
 
-Compilers and validation APIs provide **free, deterministic, content-aware** reward signals — no preference data, no reward model, no LLM judge. We test how far this gets you on a real Shopify Horizon template-generation task with a live Sitemuse `themeFilesUpsert` validator, and find:
+This is an **agentic RL** setting — multi-turn tool use (5 verbs), env-state changes (Sitemuse validator state), sparse terminal reward — closer to [Cursor Composer 2](https://cursor.com/resources/Composer2.pdf), [MiniMax-M1](https://arxiv.org/abs/2506.13585), and [Kimi K2](https://arxiv.org/abs/2507.20534) than to reasoning-RL (DeepSeek-R1 / MiMo-7B math/code single-turn).
 
-> **The bottleneck is operating regime, not reward shape.** A single in-context schema example lifts a 4B base model's compile-pass rate from **7.8% → 73.4%** *before any RL training*. In this primed regime, plain GiGPO with binary outcome reward is sufficient. Hand-designed process rewards (Compiler-OPD) and SFT-on-winners auxiliary losses (Best-Trajectory Distillation) either incur Goodhart pressure (theoretical) or memorize training distribution (empirical, **−22.7pp on OOD**).
+Compilers and validation APIs provide **free, deterministic** reward signals — no preference data, no reward model, no LLM judge. We test how far this gets on a real Shopify Horizon template-generation task with a live Sitemuse `themeFilesUpsert` validator, and find:
+
+> **The bottleneck is operating regime, not reward shape.** A single in-context schema example lifts a 4B base model's compile-pass rate from **7.8% → 73.4%** *before any RL training*. In this primed regime, plain GiGPO with binary outcome reward is sufficient. Three process-reward variants — hand-designed step credit (Compiler-OPD, theoretical Goodhart), SFT-on-winners (Best-Trajectory Distillation, **−22.7pp on OOD**), and Cursor-style auxiliary product penalties (v3-shaped, **stagnant at base**) — all fail to beat the minimal binary baseline in this compute-constrained setting, consistent with [Open-Reasoner-Zero](https://arxiv.org/abs/2503.24290)'s finding that minimalist reward outperforms complex shaping.
 
 ## Main Result
 
@@ -19,8 +21,11 @@ Three eval distributions × three methods (single seed, Qwen3-4B-Instruct-2507):
 | Base (no RL) | 70.0 | 74.0 | 40.9 | 61.6 |
 | **v1 — GiGPO + binary outcome** | **78.0** | **76.0** | **50.0** | **68.0** |
 | v2-distill — + SFT-on-winners (α=0.1) | 74.0 | 70.0 | 27.3 | 57.1 |
+| v3-shaped — + Cursor-style product penalties | 71.9 (s30) | — | — | — |
 
 `eval_fixed` is the OOD modify/add/create task set from prior baseline work; v1 trained only on from-scratch generation prompts.
+
+**v3-shaped (Cursor Composer 2-style auxiliary penalties)** stalled at the base rate over 40 training steps on in-loop validation (n=32 fixed prefix). Full n=122 eval was blocked by AutoDL SSH outage; LoRA archived at step_20 / step_40 for post-hoc evaluation. The negative result confirms Open-Reasoner-Zero's finding that minimalist outcome reward outperforms hand-designed shaping in compute-constrained settings.
 
 Full per-task trajectories in `experiments/logs/v1_horizon/` and `experiments/logs/v2_distill/`.
 
@@ -78,7 +83,9 @@ which contains:
 | **v1** | GiGPO + binary compile reward + few-shot priming | ✅ run, eval done — current best |
 | v2-OPD | + per-step `+0.1` reward on first 2 `fix` calls (Math-Shepherd-style) | ❌ not run; cap-K is hand-tuned, Goodhart risk; sparseness fix obviated by priming |
 | v2-distill | + SFT auxiliary loss on tokens of trajectories with reward ≥ 0.5, α=0.1 | ✅ run, eval done — underperforms v1 |
-| v3 (planned) | Regime-Gated Distillation: α adapts to group success variance | 🚧 algorithm proposed in paper, validation experiment pending |
+| v3-essa | GiGPO + Error-State Step Anchor (replaces obs-string anchor with canonical validator-error fingerprint) | ✅ run to step 40, in-loop val 70-81% (n=32); full eval pending |
+| v3-shaped | + Cursor Composer 2-style product penalties (empty-section, unused-describe, used-describe-bonus, repeat-submit) | ✅ run to step 40; stalled at base rate in-loop, negative result |
+| v4 (future) | Either: (a) DAPO dynamic sampling + Clip-Higher (MiMo-7B recipe), (b) phi-4-style Sonnet-regenerated few-shot, or (c) store-context injection à la `TemplateFillAgent` | 🚧 design notes in `docs/v4_design_options.md` |
 
 ## Environment
 
@@ -114,15 +121,17 @@ python eval_horizon.py \
 ## Caveats
 
 - **Single seed**: all numbers are point estimates; multi-seed runs are the obvious next step.
-- **Small batch (64 episodes/step)**: concurrent work from [Ramp Labs Fast Ask](https://ramp.com/labs/fast-ask) uses 2048 with vanilla GRPO and reports no instability; we suspect our v2-distill late collapse is partly a small-batch effect.
+- **Small batch (64 episodes/step)**: concurrent work from [Ramp Labs Fast Ask](https://ramp.com/labs/fast-ask) uses 2048 with vanilla GRPO and reports no instability; we suspect our v2-distill late collapse and v3-shaped stagnation are both partly a small-batch effect. MiMo-7B ([arXiv:2505.07608](https://arxiv.org/abs/2505.07608)) uses batch=512 on the same `verl` framework and applies DAPO dynamic sampling + Clip-Higher to maintain stability — both are one-line config changes in `verl` and the obvious next intervention.
 - **Sitemuse API auth**: token rotated mid-experiment; re-issue if encountering 401.
 - **OPD never run end-to-end**: theoretical analysis only, due to Goodhart concerns. The DPO-style alternative (`rewards/compiler_opd_dpo.py`) is implemented but not evaluated.
+- **v3-shaped eval incomplete**: AutoDL SSH outage during scheduled evaluation; step_20 and step_40 LoRAs archived to `autodl-fs:horizon_lora_archive/` for post-hoc evaluation on the full n=122 prompts.
+- **Few-shot itself is an empty shell**: the in-context example (commit `f4d8543`) that lifted base from 7.8% → 73.4% has empty `settings: {}` and `blocks: {}` — the same hack v3-shaped's penalties were designed to suppress. Phi-4-Reasoning ([arXiv:2504.21318](https://arxiv.org/abs/2504.21318)) suggests using a stronger teacher (Sonnet/o3-mini) to regenerate the few-shot — a 1-day fix that would simultaneously raise the base and remove v3-shaped's underlying motivation.
 
 ## Citation
 
 ```bibtex
 @article{fu2026operatingregime,
-  title={Compiler-as-Reward: Operating-Regime Conditions for RL Post-Training on Coding Agents},
+  title={Compiler-as-Reward: Operating-Regime Conditions for Agentic RL on Verifiable Coding Tasks},
   author={Fu, Junhao},
   year={2026},
   note={Workshop paper, draft}
